@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   bot:
     build: ./bot
@@ -33,6 +31,21 @@ services:
     networks:
       - app_network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cloudflared:
+    image: ${CLOUDFLARE_TUNNEL_IMAGE}
+    container_name: cloudflared_tunnel
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - web
+    networks:
+      - app_network
     logging:
       driver: "json-file"
       options:
