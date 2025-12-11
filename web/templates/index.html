@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Загрузка файлов экспорта чата</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 20px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        
+        .user-info {
+            color: #666;
+            font-size: 13px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .info-text {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 16px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        
+        .upload-zone {
+            border: 2px dashed #0088cc;
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8f9ff;
+        }
+        
+        .upload-zone:hover {
+            border-color: #0077b6;
+            background: #eef4ff;
+        }
+        
+        .upload-zone.drag-over {
+            background: #e3f2fd;
+            border-color: #0077b6;
+        }
+        
+        .upload-icon {
+            font-size: 40px;
+            margin-bottom: 12px;
+        }
+        
+        .upload-text {
+            color: #333;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        
+        .upload-hint {
+            color: #999;
+            font-size: 12px;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .files-list {
+            margin-top: 16px;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f8f8f8;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        
+        .file-item.error {
+            background: #ffe6e6;
+            border: 1px solid #ff9999;
+        }
+        
+        .file-name {
+            flex: 1;
+            word-break: break-all;
+            color: #333;
+        }
+        
+        .file-size {
+            color: #999;
+            margin: 0 8px;
+            font-size: 12px;
+        }
+        
+        .btn-remove {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            padding: 0 4px;
+            font-size: 16px;
+        }
+        
+        .btn-remove:hover {
+            color: #d32f2f;
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 16px;
+            background: #0088cc;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        button:hover:not(:disabled) {
+            background: #0077b6;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 16px;
+            color: #666;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #eee;
+            border-top-color: #0088cc;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .error {
+            color: #d32f2f;
+            font-size: 12px;
+            margin-top: 8px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📤 Загрузка файлов экспорта</h1>
+        <div class="user-info" id="userInfo">Загрузка...</div>
+        
+        <div class="info-text">
+            📋 <b>Требования:</b><br>
+            • Только JSON файлы<br>
+            • Максимум 10 файлов за раз<br>
+            • Размер каждого файла до 2 ГБ
+        </div>
+        
+        <div class="upload-zone" id="uploadZone">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">Кликни или перетащи JSON файлы</div>
+            <div class="upload-hint">Только формат JSON</div>
+        </div>
+        
+        <input type="file" id="fileInput" multiple accept=".json,application/json">
+        
+        <div class="files-list" id="filesList"></div>
+        
+        <button id="submitBtn" disabled>🚀 Загрузить и обработать</button>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Обработка файлов...</p>
+        </div>
+        
+        <div class="error" id="error"></div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const filesList = document.getElementById('filesList');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const userInfo = document.getElementById('userInfo');
+        const errorEl = document.getElementById('error');
+        
+        const MAX_FILES = 10;
+        let files = [];
+        let userId = null;
+        let userName = null;
+
+        tg.ready();
+        tg.expand();
+
+        function getUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            userId = params.get('user_id');
+            userName = params.get('user_name');
+            
+            if (userId && userName) {
+                userInfo.textContent = `👤 ${userName} (ID: ${userId})`;
+            } else {
+                userInfo.textContent = '⚠️ Не удалось получить ID пользователя';
+            }
+        }
+
+        function validateFile(file) {
+            // Проверка расширения
+            if (!file.name.toLowerCase().endsWith('.json')) {
+                return { valid: false, error: 'Только JSON файлы' };
+            }
+            return { valid: true };
+        }
+
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('drag-over');
+        });
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('drag-over');
+        });
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('drag-over');
+            const droppedFiles = Array.from(e.dataTransfer.files);
+            handleNewFiles(droppedFiles);
+        });
+
+        fileInput.addEventListener('change', () => {
+            handleNewFiles(Array.from(fileInput.files));
+        });
+
+        function handleNewFiles(newFiles) {
+            if (files.length + newFiles.length > MAX_FILES) {
+                showError(`Максимум ${MAX_FILES} файлов. У вас уже ${files.length}, пытаетесь добавить ${newFiles.length}`);
+                return;
+            }
+
+            newFiles.forEach(file => {
+                const validation = validateFile(file);
+                if (validation.valid) {
+                    files.push(file);
+                } else {
+                    showError(`Файл ${file.name}: ${validation.error}`);
+                }
+            });
+
+            renderFiles();
+            submitBtn.disabled = files.length === 0;
+        }
+
+        function renderFiles() {
+            filesList.innerHTML = '';
+            if (files.length === 0) {
+                return;
+            }
+
+            files.forEach((file, i) => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.innerHTML = `
+                    <span class="file-name">${file.name}</span>
+                    <span class="file-size">${formatFileSize(file.size)}</span>
+                    <button class="btn-remove" onclick="removeFile(${i})">✕</button>
+                `;
+                filesList.appendChild(item);
+            });
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        window.removeFile = (i) => {
+            files.splice(i, 1);
+            renderFiles();
+            submitBtn.disabled = files.length === 0;
+            errorEl.style.display = 'none';
+        };
+
+        function showError(message) {
+            errorEl.textContent = '❌ ' + message;
+            errorEl.style.display = 'block';
+        }
+
+        submitBtn.addEventListener('click', async () => {
+            if (!files.length || !userId) {
+                showError('Выберите файлы для загрузки');
+                return;
+            }
+
+            if (files.length > MAX_FILES) {
+                showError(`Максимум ${MAX_FILES} файлов`);
+                return;
+            }
+
+            submitBtn.disabled = true;
+            loading.style.display = 'block';
+            errorEl.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('user_id', userId);
+            files.forEach(f => formData.append('files', f));
+
+            try {
+                const res = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    tg.sendData(JSON.stringify({
+                        success: true,
+                        message: data.message || '✅ Файлы успешно обработаны!',
+                        user_id: userId
+                    }));
+                    files = [];
+                    renderFiles();
+                    fileInput.value = '';
+                } else {
+                    throw new Error(data.error || 'Неизвестная ошибка');
+                }
+            } catch (err) {
+                showError(err.message);
+                tg.sendData(JSON.stringify({
+                    success: false,
+                    message: '❌ Ошибка: ' + err.message,
+                    user_id: userId
+                }));
+            } finally {
+                loading.style.display = 'none';
+                submitBtn.disabled = files.length === 0;
+            }
+        });
+
+        getUrlParams();
+    </script>
+</body>
+</html>
+
