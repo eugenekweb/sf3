@@ -1,5 +1,6 @@
 import json
 import logging
+import chardet
 from typing import Dict, List, Set, Tuple
 from collections import defaultdict
 
@@ -16,25 +17,63 @@ class ChatParser:
         self.deleted_accounts: Set[str] = set()
 
     def parse_file(self, filepath: str) -> Dict:
-        """Парсинг одного JSON файла"""
+        """Парсинг одного JSON файла с проверкой кодировки и структуры"""
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            # Сначала пытаемся прочитать как UTF-8
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                # Если не получилось, проверяем кодировку через chardet
+                with open(filepath, "rb") as f:
+                    raw_data = f.read()
+                    detected = chardet.detect(raw_data)
+                    
+                    # Если chardet определил не UTF-8 с высокой уверенностью, и это не ASCII
+                    if detected and detected.get("encoding", "").lower() not in ["utf-8", "utf-8-sig", "ascii"]:
+                        confidence = detected.get("confidence", 0)
+                        # Повышаем порог уверенности до 0.9, чтобы избежать ложных срабатываний
+                        if confidence > 0.9:
+                            raise ValueError(
+                                f"Файл не в кодировке UTF-8. Обнаружена кодировка: {detected['encoding']} "
+                                f"(уверенность: {confidence:.0%}). Конвертируйте файл в UTF-8."
+                            )
+                    # Пробуем прочитать с определенной кодировкой
+                    encoding = detected.get("encoding", "utf-8") if detected else "utf-8"
+                    if encoding.lower() not in ["utf-8", "utf-8-sig"]:
+                        # Пробуем прочитать как UTF-8 все равно (часто chardet ошибается)
+                        try:
+                            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                                data = json.load(f)
+                        except json.JSONDecodeError:
+                            raise ValueError(f"Ошибка парсинга JSON. Возможно, файл поврежден или не является JSON.")
+                    else:
+                        raise e
 
-            # Проверка структуры
+            # Проверка, что messages - это массив (главное требование)
             if "messages" not in data:
                 raise ValueError(
                     "Файл не содержит поле 'messages'. Это не экспорт Telegram чата?"
                 )
+            
+            if not isinstance(data.get("messages"), list):
+                raise ValueError(
+                    "Поле 'messages' должно быть массивом. Это не экспорт Telegram чата?"
+                )
 
             return {
-                "name": data.get("name", "Unknown"),
+                "name": data.get("name", "Неизвестный чат"),
                 "type": data.get("type", "unknown"),
                 "id": data.get("id"),
                 "messages": data.get("messages", []),
             }
+        except UnicodeDecodeError as e:
+            raise ValueError(f"Ошибка декодирования UTF-8: {e}. Файл должен быть в кодировке UTF-8.")
         except json.JSONDecodeError as e:
             raise ValueError(f"Ошибка парсинга JSON: {e}")
+        except ValueError as e:
+            # Пробрасываем ValueError как есть (наши проверки)
+            raise
         except Exception as e:
             raise ValueError(f"Ошибка чтения файла: {e}")
 

@@ -25,7 +25,7 @@ services:
         environment:
             - BOT_TOKEN=${BOT_TOKEN}
             - FLASK_ENV=${FLASK_ENV:-production}
-            - DEBUG=${DEBUG:-False}
+            - DEBUG=${DEBUG:-false}
         volumes:
             - ./uploads:/app/uploads
         networks:

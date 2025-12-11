@@ -2,10 +2,17 @@ import os
 
 class Config:
     """Конфигурация Flask приложения"""
-    DEBUG = os.getenv("DEBUG", "False") == "True"
+    DEBUG = os.getenv("DEBUG", "False").lower() == "true"
     UPLOAD_FOLDER = "/app/uploads"
     MAX_CONTENT_LENGTH = 2 * 1024 * 1024 * 1024  # 2 ГБ
     BOT_TOKEN = os.getenv("BOT_TOKEN")
+    BACKEND_URL = os.getenv("BACKEND_URL", "")
+    
+    # Настройки управления веб-апп
+    # WEBAPP_DISABLED=true - отключить веб-апп, использовать только прямую загрузку в ТГ
+    # WEBAPP_ONLY=true - использовать только веб-апп, отключить прямую загрузку в ТГ
+    WEBAPP_DISABLED = os.getenv("WEBAPP_DISABLED", "False").lower() == "true"
+    WEBAPP_ONLY = os.getenv("WEBAPP_ONLY", "False").lower() == "true"
     
     @property
     def TELEGRAM_API_URL(self):

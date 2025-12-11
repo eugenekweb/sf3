@@ -42,12 +42,19 @@
         }
         
         .info-text {
-            color: #666;
-            font-size: 12px;
-            margin-bottom: 16px;
-            padding: 12px;
+            color: #333;
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            padding: 16px;
             background: #f8f9fa;
-            border-radius: 6px;
+            border-radius: 8px;
+            border-left: 4px solid #0088cc;
+        }
+        
+        .info-text b {
+            color: #0088cc;
+            font-weight: 600;
         }
         
         .upload-zone {
@@ -97,14 +104,22 @@
         }
         
         .file-item {
-            display: flex;
-            justify-content: space-between;
+            display: grid;
+            grid-template-columns: 1fr 20% auto;
             align-items: center;
-            padding: 10px;
+            padding: 4px 8px;
             background: #f8f8f8;
-            border-radius: 6px;
-            margin-bottom: 8px;
+            border-radius: 4px;
+            margin-bottom: 4px;
             font-size: 13px;
+            min-height: 0;
+            line-height: 1.3;
+            gap: 8px;
+        }
+        
+        .file-item.error-file {
+            background: #ffe6e6;
+            border: 1px solid #ff9999;
         }
         
         .file-item.error {
@@ -113,15 +128,20 @@
         }
         
         .file-name {
-            flex: 1;
+            width: 100%;
             word-break: break-all;
             color: #333;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         
         .file-size {
             color: #999;
-            margin: 0 8px;
             font-size: 12px;
+            white-space: nowrap;
+            text-align: right;
         }
         
         .btn-remove {
@@ -131,6 +151,12 @@
             cursor: pointer;
             padding: 0 4px;
             font-size: 16px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
         }
         
         .btn-remove:hover {
@@ -187,12 +213,101 @@
             margin-top: 8px;
             display: none;
         }
+        
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            pointer-events: all;
+        }
+        
+        .progress-container {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .progress-bar-wrapper {
+            width: 100%;
+            height: 24px;
+            background: #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #0088cc, #0077b6);
+            border-radius: 12px;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .file-progress {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 13px;
+        }
+        
+        .file-progress-name {
+            flex: 1;
+            word-break: break-all;
+        }
+        
+        .file-progress-status {
+            margin-left: 8px;
+            font-size: 16px;
+        }
+        
+        .scroll-indicator {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: none;
+            z-index: 100;
+            animation: bounce 2s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-5px); }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📤 Загрузка файлов экспорта</h1>
         <div class="user-info" id="userInfo">Загрузка...</div>
+        
+        {% if debug_mode %}
+        <div class="debug-mode" id="debugMode" style="background: #fff3cd; border: 1px solid #ffc107; padding: 12px; margin: 16px 0; border-radius: 6px;">
+            <strong>🐛 DEBUG MODE</strong><br>
+            <label for="debugUserId" style="display: block; margin-top: 8px;">User ID (для тестирования):</label>
+            <input type="text" id="debugUserId" placeholder="Введите User ID" style="width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px;">
+            <button id="debugSetUserId" style="margin-top: 8px; padding: 6px 12px; background: #ffc107; border: none; border-radius: 4px; cursor: pointer;">Установить User ID</button>
+        </div>
+        {% endif %}
         
         <div class="info-text">
             📋 <b>Требования:</b><br>
@@ -219,10 +334,30 @@
         </div>
         
         <div class="error" id="error"></div>
+        <div class="overlay" id="overlay"></div>
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar-wrapper">
+                <div class="progress-bar" id="progressBar">0%</div>
+            </div>
+            <div id="filesProgress"></div>
+        </div>
+        <div class="scroll-indicator" id="scrollIndicator">⬇ Прокрутите вниз</div>
     </div>
 
     <script>
-        const tg = window.Telegram.WebApp;
+        // Инициализация Telegram WebApp (если доступен)
+        const debugMode = {% if debug_mode %}true{% else %}false{% endif %};
+        console.log('DEBUG MODE:', debugMode);
+        let tg = null;
+        
+        if (typeof window.Telegram !== 'undefined' && window.Telegram.WebApp) {
+            tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand();
+        } else {
+            console.log('Telegram WebApp not available (opened in browser)');
+        }
+        
         const uploadZone = document.getElementById('uploadZone');
         const fileInput = document.getElementById('fileInput');
         const filesList = document.getElementById('filesList');
@@ -230,34 +365,64 @@
         const loading = document.getElementById('loading');
         const userInfo = document.getElementById('userInfo');
         const errorEl = document.getElementById('error');
+        const overlay = document.getElementById('overlay');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const filesProgress = document.getElementById('filesProgress');
         
         const MAX_FILES = 10;
         let files = [];
         let userId = null;
         let userName = null;
-
-        tg.ready();
-        tg.expand();
+        let uploadStartTime = null;
+        let progressTimeout = null;
 
         function initUser() {
             // Получаем данные пользователя из Telegram WebApp API
-            const user = tg.initDataUnsafe?.user;
+            const user = (typeof tg !== 'undefined' && tg?.initDataUnsafe?.user) ? tg.initDataUnsafe.user : null;
             
             if (user) {
                 userId = user.id.toString();
                 userName = user.first_name || user.username || 'Пользователь';
                 userInfo.textContent = `👤 ${userName} (ID: ${userId})`;
-            } else {
-                // Fallback: пытаемся получить из URL (для тестирования)
-                const params = new URLSearchParams(window.location.search);
-                userId = params.get('user_id');
-                userName = params.get('user_name') || 'Пользователь';
+                submitBtn.disabled = false;
+            } else if (debugMode) {
+                // В режиме DEBUG разрешаем работу без Telegram
+                console.log('DEBUG MODE: Telegram WebApp not available, using manual User ID');
+                userInfo.textContent = '🐛 DEBUG MODE: Введите User ID вручную';
+                submitBtn.disabled = false;
+                uploadZone.style.pointerEvents = 'auto';
+                uploadZone.style.opacity = '1';
                 
-                if (userId) {
-                    userInfo.textContent = `👤 ${userName} (ID: ${userId})`;
+                // Обработчик для установки User ID вручную
+                const debugUserIdInput = document.getElementById('debugUserId');
+                const debugSetUserIdBtn = document.getElementById('debugSetUserId');
+                
+                if (debugSetUserIdBtn && debugUserIdInput) {
+                    debugSetUserIdBtn.addEventListener('click', () => {
+                        const manualUserId = debugUserIdInput.value.trim();
+                        if (manualUserId && !isNaN(manualUserId)) {
+                            userId = manualUserId;
+                            userInfo.textContent = `🐛 DEBUG: User ID установлен вручную (ID: ${userId})`;
+                            submitBtn.disabled = files.length === 0;
+                            console.log('DEBUG: User ID set to', userId);
+                        } else {
+                            alert('Введите корректный User ID (число)');
+                        }
+                    });
+                    
+                    // Автоматически устанавливаем тестовый ID при загрузке страницы
+                    debugUserIdInput.value = '123456789';
+                    debugSetUserIdBtn.click();
                 } else {
-                    userInfo.textContent = '⚠️ Не удалось получить ID пользователя';
+                    console.error('DEBUG: Could not find debugUserIdInput or debugSetUserIdBtn');
                 }
+            } else {
+                // Если открыто не из Telegram и не DEBUG - блокируем загрузку
+                userInfo.textContent = '⚠️ Не удалось получить ID пользователя. Откройте приложение через Telegram.';
+                submitBtn.disabled = true;
+                uploadZone.style.pointerEvents = 'none';
+                uploadZone.style.opacity = '0.5';
             }
         }
 
@@ -289,8 +454,12 @@
         });
 
         function handleNewFiles(newFiles) {
+            // Очищаем предыдущие ошибки
+            errorEl.style.display = 'none';
+            errorEl.textContent = '';
+            
             if (files.length + newFiles.length > MAX_FILES) {
-                showError(`Максимум ${MAX_FILES} файлов. У вас уже ${files.length}, пытаетесь добавить ${newFiles.length}`);
+                showError(`Вы пытаетесь добавить ${newFiles.length} файлов. Максимум ${MAX_FILES} файлов.`);
                 return;
             }
 
@@ -304,26 +473,42 @@
             });
 
             renderFiles();
-            submitBtn.disabled = files.length === 0;
+            submitBtn.disabled = files.length === 0 || !userId;
         }
 
         function renderFiles() {
             filesList.innerHTML = '';
             if (files.length === 0) {
+                checkScrollIndicator();
                 return;
             }
 
             files.forEach((file, i) => {
                 const item = document.createElement('div');
-                item.className = 'file-item';
+                item.className = 'file-item' + (file.error ? ' error-file' : '');
                 item.innerHTML = `
-                    <span class="file-name">${file.name}</span>
+                    <span class="file-name" title="${file.name}">${file.name}</span>
                     <span class="file-size">${formatFileSize(file.size)}</span>
                     <button class="btn-remove" onclick="removeFile(${i})">✕</button>
                 `;
                 filesList.appendChild(item);
             });
+            
+            checkScrollIndicator();
         }
+        
+        function checkScrollIndicator() {
+            const scrollIndicator = document.getElementById('scrollIndicator');
+            const container = document.querySelector('.container');
+            if (container && scrollIndicator) {
+                const isScrollable = container.scrollHeight > window.innerHeight;
+                const isScrolledToBottom = (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 50;
+                scrollIndicator.style.display = (isScrollable && !isScrolledToBottom) ? 'block' : 'none';
+            }
+        }
+        
+        window.addEventListener('scroll', checkScrollIndicator);
+        window.addEventListener('resize', checkScrollIndicator);
 
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
@@ -345,7 +530,262 @@
             errorEl.style.display = 'block';
         }
 
-        submitBtn.addEventListener('click', async () => {
+        let uploadRetryCount = 0;
+        const MAX_RETRIES = 3;
+        let currentXhr = null;
+        let currentFormData = null;
+        let currentFiles = null;
+        let currentIsLargeFile = false;
+        let currentTotalSizeMB = 0;
+
+        function startUpload(retryAttempt = 0) {
+            if (!currentFiles || !currentFiles.length || !userId) {
+                showError('Выберите файлы для загрузки');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            loading.style.display = 'block';
+            errorEl.style.display = 'none';
+            overlay.style.display = 'block';
+            uploadStartTime = Date.now();
+            
+            if (retryAttempt > 0) {
+                console.log(`Retry attempt ${retryAttempt} of ${MAX_RETRIES}`);
+                showError(`Повторная попытка загрузки (${retryAttempt}/${MAX_RETRIES})...`);
+            }
+            
+            // Для больших файлов показываем прогресс-бар сразу
+            if (currentIsLargeFile) {
+                console.log('Large file detected, showing progress bar immediately');
+                progressContainer.style.display = 'block';
+            }
+
+            const formData = new FormData();
+            formData.append('user_id', userId);
+            currentFiles.forEach(f => formData.append('files', f));
+            currentFormData = formData;
+
+            const xhr = new XMLHttpRequest();
+            currentXhr = xhr;
+            
+            // Устанавливаем большой таймаут для больших файлов (30 минут)
+            xhr.timeout = 30 * 60 * 1000; // 30 минут в миллисекундах
+            
+            // Отслеживание прогресса загрузки
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    const loadedMB = (e.loaded / 1024 / 1024).toFixed(2);
+                    const totalMB = (e.total / 1024 / 1024).toFixed(2);
+                    
+                    progressBar.style.width = percent + '%';
+                    progressBar.textContent = percent + '%';
+                    
+                    // Показываем прогресс-бар если загрузка идет более 2 секунд или для больших файлов
+                    const elapsed = Date.now() - uploadStartTime;
+                    if (elapsed > 2000 || currentIsLargeFile) {
+                        if (progressContainer.style.display !== 'block') {
+                            progressContainer.style.display = 'block';
+                            console.log(`Progress bar shown: ${loadedMB} MB / ${totalMB} MB (${percent}%)`);
+                        }
+                    }
+                    
+                    // Логируем прогресс каждые 10%
+                    if (percent % 10 === 0) {
+                        console.log(`Upload progress: ${percent}% (${loadedMB} MB / ${totalMB} MB)`);
+                    }
+                    
+                    // Обновляем статусы файлов на основе общего прогресса
+                    // Приблизительно распределяем прогресс по файлам
+                    // Считаем, что загрузка файла завершена когда общий прогресс превышает его долю
+                    const filesCount = currentFiles ? currentFiles.length : 0;
+                    if (filesCount > 0) {
+                        const filesPerPercent = 100 / filesCount;
+                        currentFiles.forEach((file, i) => {
+                            const fileProgressEl = document.getElementById(`file-progress-${i}`);
+                            if (fileProgressEl) {
+                                // Каждый файл занимает свою долю прогресса
+                                const fileStartPercent = i * filesPerPercent;
+                                const fileEndPercent = (i + 1) * filesPerPercent;
+                                
+                                if (percent >= fileEndPercent) {
+                                    // Файл полностью загружен, отмечаем как обрабатывается
+                                    fileProgressEl.querySelector('.file-progress-status').textContent = '📤';
+                                } else if (percent > fileStartPercent) {
+                                    // Файл загружается
+                                    fileProgressEl.querySelector('.file-progress-status').textContent = '⏳';
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+            
+            xhr.addEventListener('load', () => {
+                clearTimeout(progressTimeout);
+                
+                if (xhr.status === 200) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        
+                        // Успешная загрузка - сбрасываем счетчик повторов
+                        uploadRetryCount = 0;
+                        
+                        overlay.style.display = 'none';
+                        progressContainer.style.display = 'none';
+                        loading.style.display = 'none';
+                        
+                        // Отмечаем все файлы как загруженные
+                        currentFiles.forEach((file, i) => {
+                            const fileProgressEl = document.getElementById(`file-progress-${i}`);
+                            if (fileProgressEl) {
+                                fileProgressEl.querySelector('.file-progress-status').textContent = '✅';
+                            }
+                        });
+                        
+                        // Отправляем данные в Telegram только если доступен tg объект
+                        if (typeof tg !== 'undefined' && tg && tg.sendData) {
+                            tg.sendData(JSON.stringify({
+                                success: true,
+                                message: data.message || '✅ Файлы успешно обработаны!',
+                                user_id: userId
+                            }));
+                        } else if (debugMode) {
+                            console.log('DEBUG: Upload successful, data:', data);
+                        }
+                        
+                        // Очищаем форму
+                        files = [];
+                        currentFiles = null;
+                        renderFiles();
+                        fileInput.value = '';
+                        
+                        // Закрываем окно WebApp после успешной обработки (только если открыто из Telegram)
+                        if (typeof tg !== 'undefined' && tg && tg.close) {
+                            setTimeout(() => {
+                                tg.close();
+                            }, 1000);
+                        } else if (debugMode) {
+                            console.log('DEBUG: Upload completed, WebApp would close in Telegram');
+                        }
+                    } catch (err) {
+                        showError('Ошибка при обработке ответа');
+                    }
+                } else {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        throw new Error(data.error || 'Неизвестная ошибка');
+                    } catch (err) {
+                        showError(err.message || 'Ошибка загрузки');
+                    }
+                }
+                submitBtn.disabled = files.length === 0;
+            });
+            
+            xhr.addEventListener('error', (e) => {
+                clearTimeout(progressTimeout);
+                
+                console.error('Upload error:', {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    readyState: xhr.readyState,
+                    responseText: xhr.responseText?.substring(0, 200)
+                });
+                
+                // Проверяем, можно ли повторить попытку
+                const isNetworkError = xhr.status === 0 || 
+                    xhr.statusText === '' || 
+                    xhr.readyState === 4;
+                const isRetryableError = isNetworkError && uploadRetryCount < MAX_RETRIES;
+                
+                if (isRetryableError) {
+                    uploadRetryCount++;
+                    console.log(`Network error detected, retrying... (${uploadRetryCount}/${MAX_RETRIES})`);
+                    
+                    // Ждем перед повторной попыткой (экспоненциальная задержка)
+                    const retryDelay = Math.min(1000 * Math.pow(2, uploadRetryCount - 1), 10000); // Максимум 10 секунд
+                    
+                    setTimeout(() => {
+                        if (currentXhr === xhr) { // Проверяем, что это все еще актуальный запрос
+                            startUpload(uploadRetryCount);
+                        }
+                    }, retryDelay);
+                    return;
+                }
+                
+                // Если повторные попытки исчерпаны или ошибка не повторяемая
+                overlay.style.display = 'none';
+                progressContainer.style.display = 'none';
+                loading.style.display = 'none';
+                
+                // Более детальное сообщение об ошибке
+                let errorMsg = 'Ошибка сети при загрузке файлов. ';
+                if (xhr.status === 0) {
+                    errorMsg += 'Возможно, соединение прервано или сервер недоступен. ';
+                    if (uploadRetryCount >= MAX_RETRIES) {
+                        errorMsg += `Попытки повторной загрузки исчерпаны (${MAX_RETRIES}). `;
+                        errorMsg += 'Проверьте настройки Cloudflare Tunnel (таймауты, HTTP/2). ';
+                    }
+                } else if (xhr.status >= 500) {
+                    errorMsg += 'Ошибка на сервере. Попробуйте позже. ';
+                } else if (xhr.status >= 400) {
+                    errorMsg += 'Ошибка запроса. Проверьте файл и попробуйте снова. ';
+                }
+                errorMsg += 'Для больших файлов (>100 МБ) загрузка может занять несколько минут.';
+                
+                showError(errorMsg);
+                if (typeof tg !== 'undefined' && tg && tg.sendData) {
+                    tg.sendData(JSON.stringify({
+                        success: false,
+                        message: '❌ Ошибка сети при загрузке',
+                        user_id: userId
+                    }));
+                } else if (debugMode) {
+                    console.error('DEBUG: Upload error:', errorMsg);
+                }
+                submitBtn.disabled = files.length === 0;
+                uploadRetryCount = 0; // Сбрасываем счетчик для следующей загрузки
+            });
+            
+            xhr.addEventListener('timeout', () => {
+                clearTimeout(progressTimeout);
+                overlay.style.display = 'none';
+                progressContainer.style.display = 'none';
+                loading.style.display = 'none';
+                
+                console.error('Upload timeout after 30 minutes');
+                
+                showError('Превышено время ожидания (30 минут). Файл слишком большой или соединение медленное. Попробуйте загрузить файл меньшего размера или проверьте скорость интернета.');
+                if (tg && tg.sendData) {
+                    tg.sendData(JSON.stringify({
+                        success: false,
+                        message: '❌ Превышено время ожидания загрузки',
+                        user_id: userId
+                    }));
+                } else if (debugMode) {
+                    console.error('DEBUG: Upload timeout');
+                }
+                submitBtn.disabled = files.length === 0;
+            });
+            
+            xhr.open('POST', '/api/upload');
+            
+            console.log('Starting XHR upload request');
+            xhr.send(formData);
+            
+            // Показываем прогресс-бар через 2 секунды, если загрузка еще идет (для маленьких файлов)
+            if (!currentIsLargeFile) {
+                progressTimeout = setTimeout(() => {
+                    if (progressContainer && progressContainer.style.display !== 'block') {
+                        progressContainer.style.display = 'block';
+                        console.log('Progress bar shown after 2 seconds');
+                    }
+                }, 2000);
+            }
+        }
+
+        submitBtn.addEventListener('click', () => {
             if (!files.length || !userId) {
                 showError('Выберите файлы для загрузки');
                 return;
@@ -356,45 +796,32 @@
                 return;
             }
 
-            submitBtn.disabled = true;
-            loading.style.display = 'block';
-            errorEl.style.display = 'none';
+            // Сохраняем текущие файлы для возможных повторов
+            currentFiles = files;
+            uploadRetryCount = 0;
+            
+            // Проверяем размер файлов для определения, нужно ли сразу показать прогресс-бар
+            const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
+            currentTotalSizeMB = totalSize / 1024 / 1024;
+            currentIsLargeFile = currentTotalSizeMB > 10; // Для файлов >10 МБ показываем прогресс сразу
+            
+            console.log(`Starting upload: ${files.length} file(s), total size: ${currentTotalSizeMB.toFixed(2)} MB`);
+            
+            // Инициализируем прогресс для каждого файла
+            filesProgress.innerHTML = '';
+            files.forEach((file, i) => {
+                const fileProgress = document.createElement('div');
+                fileProgress.className = 'file-progress';
+                fileProgress.id = `file-progress-${i}`;
+                const fileSizeMB = (file.size || 0) / 1024 / 1024;
+                fileProgress.innerHTML = `
+                    <span class="file-progress-name">${file.name} (${fileSizeMB.toFixed(2)} MB)</span>
+                    <span class="file-progress-status">⏳</span>
+                `;
+                filesProgress.appendChild(fileProgress);
+            });
 
-            const formData = new FormData();
-            formData.append('user_id', userId);
-            files.forEach(f => formData.append('files', f));
-
-            try {
-                const res = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await res.json();
-
-                if (res.ok) {
-                    tg.sendData(JSON.stringify({
-                        success: true,
-                        message: data.message || '✅ Файлы успешно обработаны!',
-                        user_id: userId
-                    }));
-                    files = [];
-                    renderFiles();
-                    fileInput.value = '';
-                } else {
-                    throw new Error(data.error || 'Неизвестная ошибка');
-                }
-            } catch (err) {
-                showError(err.message);
-                tg.sendData(JSON.stringify({
-                    success: false,
-                    message: '❌ Ошибка: ' + err.message,
-                    user_id: userId
-                }));
-            } finally {
-                loading.style.display = 'none';
-                submitBtn.disabled = files.length === 0;
-            }
+            startUpload(0);
         });
 
         initUser();

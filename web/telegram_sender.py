@@ -91,4 +91,40 @@ class TelegramSender:
         """Отправка сообщения об ошибке"""
         text = f"❌ <b>Ошибка при обработке:</b>\n\n{error_message}"
         return self.send_message(chat_id, text)
+    
+    def send_message_with_keyboard(self, chat_id: int, text: str, 
+                                   keyboard: dict, parse_mode: str = "HTML") -> bool:
+        """
+        Отправка текстового сообщения с inline клавиатурой
+        
+        Args:
+            chat_id: ID чата пользователя
+            text: Текст сообщения
+            keyboard: Словарь с inline_keyboard (формат Telegram API)
+            parse_mode: Режим парсинга (HTML или Markdown)
+        
+        Returns:
+            bool: True если успешно, False иначе
+        """
+        try:
+            url = f"{self.api_url}/sendMessage"
+            data = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+                "reply_markup": keyboard
+            }
+            
+            response = requests.post(url, json=data, timeout=30)
+            
+            if response.status_code == 200:
+                logger.info(f"Message with keyboard sent to {chat_id}")
+                return True
+            else:
+                logger.error(f"Failed to send message with keyboard: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error sending message with keyboard: {e}")
+            return False
 

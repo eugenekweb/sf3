@@ -4,11 +4,15 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     WebAppInfo,
+    CallbackQuery,
 )
 from aiogram.filters import Command
 import json
 import logging
 import os
+import requests
+import tempfile
+from src.utils import Config as BotConfig
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -22,9 +26,18 @@ class BotHandlers:
         self.bot_token = bot_token
 
     @staticmethod
-    def _webapp_keyboard(backend_url: str | None) -> InlineKeyboardMarkup | None:
-        """Кнопка для открытия WebApp, если URL задан"""
-        if not backend_url:
+    def _webapp_keyboard(backend_url: str | None, webapp_disabled: bool = False) -> InlineKeyboardMarkup | None:
+        """Кнопка для открытия WebApp, если URL задан и веб-апп не отключен"""
+        if not backend_url or webapp_disabled:
+            return None
+        # Проверяем доступность URL (не блокируем, если недоступен, просто не показываем кнопку)
+        try:
+            response = requests.get(backend_url, timeout=2)
+            if response.status_code >= 400:
+                logger.warning(f"BACKEND_URL недоступен: {backend_url}")
+                return None
+        except Exception as e:
+            logger.warning(f"BACKEND_URL недоступен: {backend_url}, ошибка: {e}")
             return None
         # Добавляем слэш, чтобы гарантированно открыть корень с формой
         url = backend_url.rstrip("/") + "/"
@@ -56,12 +69,64 @@ class BotHandlers:
             "⚠️ Ограничение Telegram: в личку >20 МБ не принимаются, поэтому работаем через WebApp."
         )
 
+        keyboard = BotHandlers._webapp_keyboard(backend_url)
+        if keyboard:
+            # Добавляем кнопку Помощь
+            keyboard.inline_keyboard.append([
+                InlineKeyboardButton(text="❓ Помощь", callback_data="help")
+            ])
+
+        # Учитываем настройки веб-апп
+        webapp_disabled = BotConfig.WEBAPP_DISABLED
+        if keyboard and webapp_disabled:
+            keyboard = None
+        
         await message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=BotHandlers._webapp_keyboard(backend_url),
+            reply_markup=keyboard,
         )
         logger.info(f"User {user_id} started bot")
+
+    @staticmethod
+    async def cmd_help(message: Message, backend_url: str):
+        """Команда /help - инструкция по использованию"""
+        text = (
+            "📖 <b>Инструкция по использованию бота</b>\n\n"
+            "🔹 <b>Шаг 1: Экспорт истории чата</b>\n"
+            "1. Откройте Telegram Desktop\n"
+            "2. Откройте нужный чат\n"
+            "3. Нажмите на три точки → Экспорт истории чата\n"
+            "4. Выберите формат <b>JSON</b> (обязательно!)\n"
+            "5. Снимите галочки с медиафайлов (чтобы уменьшить размер)\n"
+            "6. Нажмите Экспорт и сохраните файл(ы)\n\n"
+            "🔹 <b>Шаг 2: Загрузка в бота</b>\n"
+            "1. Нажмите кнопку Открыть WebApp\n"
+            "2. В открывшемся окне выберите или перетащите JSON файлы\n"
+            "3. Можно загрузить до 10 файлов за раз\n"
+            "4. Нажмите Загрузить и обработать\n\n"
+            "🔹 <b>Шаг 3: Получение результата</b>\n"
+            "• Если участников меньше 50: получите текстовый список\n"
+            "• Если участников 51 и больше: получите Excel файл\n\n"
+            "📋 <b>Требования к файлам:</b>\n"
+            "• Формат: только JSON\n"
+            "• Кодировка: UTF-8\n"
+            "• Размер: до 2 ГБ каждый\n"
+            "• Количество: максимум 10 файлов\n\n"
+            "⚠️ <b>Важно:</b>\n"
+            "• Файлы должны быть экспортом из Telegram Desktop\n"
+            "• Структура: name, type, id, messages\n"
+            "• Файлы не сохраняются на сервере"
+        )
+
+        webapp_disabled = BotConfig.WEBAPP_DISABLED
+        keyboard = BotHandlers._webapp_keyboard(backend_url, webapp_disabled)
+        if keyboard:
+            keyboard.inline_keyboard.append([
+                InlineKeyboardButton(text="❓ Помощь", callback_data="help")
+            ])
+
+        await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
 
     @staticmethod
     async def handle_web_app_data(message: Message):
@@ -86,34 +151,118 @@ class BotHandlers:
             await message.answer("❌ Ошибка при обработке результата")
 
     @staticmethod
-    async def handle_document(message: Message, backend_url: str, bot_token: str):
+    async def handle_document(message: Message, backend_url: str, bot_token: str, 
+                              webapp_disabled: bool = False, webapp_only: bool = False):
         """
-        Приём файлов в личку отключаем, чтобы не упираться в лимит 20 МБ.
-        Направляем пользователя в WebApp по HTTPS.
+        Обработка загрузки документов.
+        Если WEBAPP_ONLY=true - принимаем файлы только через веб-апп.
+        Если WEBAPP_DISABLED=true - принимаем файлы только напрямую в бота.
         """
-        if backend_url:
-            url = backend_url.rstrip("/") + "/"
-            await message.answer(
-                "❌ Приём файлов прямо в бота отключён, используйте WebApp.\n"
-                f"🌐 Открыть WebApp: {url}",
-                reply_markup=BotHandlers._webapp_keyboard(backend_url),
-            )
+        if webapp_only:
+            # Только через веб-апп
+            if backend_url:
+                await message.answer(
+                    "❌ Приём файлов прямо в бота отключён, используйте WebApp.",
+                    reply_markup=BotHandlers._webapp_keyboard(backend_url, webapp_disabled),
+                )
+            else:
+                await message.answer(
+                    "⚠️ BACKEND_URL не настроен. Укажите публичный HTTPS в переменной BACKEND_URL."
+                )
+        elif webapp_disabled:
+            # Только напрямую в бота (старый режим)
+            await BotHandlers._process_document_directly(message, bot_token)
         else:
-            await message.answer(
-                "⚠️ BACKEND_URL не настроен. Укажите публичный HTTPS в переменной BACKEND_URL."
-            )
+            # Оба метода работают, но если HTTPS недоступен - используем прямой режим
+            # Пользователь уже отправил файл - обрабатываем напрямую (без промежуточных сообщений)
+            await BotHandlers._process_document_directly(message, bot_token)
+    
+    @staticmethod
+    async def _process_document_directly(message: Message, bot_token: str):
+        """Обработка файла напрямую через внутренний API (без промежуточных сообщений)"""
+        try:
+            if not message.document:
+                await message.answer("❌ Файл не найден в сообщении.")
+                return
+            
+            # Проверка расширения
+            if not message.document.file_name or not message.document.file_name.lower().endswith('.json'):
+                file_name = message.document.file_name or "файл"
+                await message.answer(f"❌ Файл {file_name}: поддерживаются только JSON файлы.")
+                return
+            
+            # Проверка размера (лимит Telegram API - 20 МБ)
+            if message.document.file_size and message.document.file_size > 20 * 1024 * 1024:
+                await message.answer(
+                    f"❌ Файл слишком большой ({message.document.file_size / 1024 / 1024:.1f} МБ). "
+                    f"Максимум 20 МБ для прямой загрузки. Используйте WebApp для больших файлов."
+                )
+                return
+            
+            # Скачиваем файл (без промежуточных сообщений)
+            bot = message.bot
+            file = await bot.get_file(message.document.file_id)
+            
+            # Сохраняем во временный файл
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.json')
+            await bot.download_file(file.file_path, temp_file.name)
+            temp_file.close()
+            
+            user_id = message.from_user.id
+            
+            # Отправляем на обработку через внутренний API
+            # Используем внутренний Docker URL
+            api_url = os.getenv("WEB_API_URL", "http://web:5000/api/upload")
+            
+            with open(temp_file.name, 'rb') as f:
+                files = {'files': (message.document.file_name, f, 'application/json')}
+                data = {'user_id': str(user_id)}
+                
+                response = requests.post(api_url, files=files, data=data, timeout=300)
+            
+            # Удаляем временный файл
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
+            
+            # Отправляем только один ответ - результат или ошибку
+            if response.status_code == 200:
+                result = response.json()
+                # Результат уже отправлен через TelegramSender в app.py, не дублируем
+                pass
+            else:
+                error_data = response.json() if response.content else {}
+                error_msg = error_data.get('error', 'Неизвестная ошибка при обработке')
+                await message.answer(f"❌ Ошибка: {error_msg}")
+                
+        except Exception as e:
+            logger.error(f"Error processing document directly: {e}", exc_info=True)
+            await message.answer(f"❌ Ошибка при обработке файла: {str(e)}")
 
 
 def register_handlers(dp, backend_url: str, bot_token: str):
     """Регистрация всех обработчиков"""
+    webapp_disabled = BotConfig.WEBAPP_DISABLED
+    webapp_only = BotConfig.WEBAPP_ONLY
 
     @router.message(Command("start"))
     async def cmd_start_handler(message: Message):
         await BotHandlers.cmd_start(message, backend_url, bot_token)
 
+    @router.message(Command("help"))
+    async def cmd_help_handler(message: Message):
+        await BotHandlers.cmd_help(message, backend_url)
+
+    @router.callback_query(F.data == "help")
+    async def help_callback_handler(callback: CallbackQuery):
+        await callback.answer()
+        await BotHandlers.cmd_help(callback.message, backend_url)
+
     @router.message(F.document)
     async def document_handler(message: Message):
-        await BotHandlers.handle_document(message, backend_url, bot_token)
+        await BotHandlers.handle_document(message, backend_url, bot_token, 
+                                          webapp_disabled, webapp_only)
 
     @router.message()
     async def any_message(message: Message):

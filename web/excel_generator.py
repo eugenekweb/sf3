@@ -121,33 +121,39 @@ class ExcelGenerator:
                           channels: List[Dict], chat_name: str = "Unknown") -> str:
         """
         Генерация текстового списка для отправки в чат (< 50 участников)
-        Формат: имя (ИД)
+        Формат: имя (ИД) в code блоке для копирования (markdown с тройными кавычками)
         
         Returns:
             str: Текстовое представление списка
         """
-        text = "📊 <b>Результаты анализа чата:</b>\n\n"
+        text = "📊 *Результаты анализа чата:*\n\n"
         
         if participants:
-            text += f"👤 <b>Участники ({len(participants)}):</b>\n"
-            for i, p in enumerate(participants, 1):
+            text += f"👤 *Участники ({len(participants)}):*\n"
+            # Формируем список без нумерации
+            participants_list = []
+            for p in participants:
                 name = p.get('name', 'Unknown')
                 from_id = p.get('from_id', 'N/A')
-                text += f"{i}. {name} ({from_id})\n"
-            text += "\n"
+                participants_list.append(f"{name} ({from_id})")
+            # Оборачиваем в markdown code блок с тройными кавычками
+            text += "```\n" + "\n".join(participants_list) + "\n```\n\n"
         
         # Показываем только упоминания с username
         mentions_with_username = [m for m in mentions if m.get('username')]
         if mentions_with_username:
-            text += f"👥 <b>Упоминания ({len(mentions_with_username)}):</b>\n"
-            for i, m in enumerate(mentions_with_username, 1):
+            text += f"👥 *Упоминания ({len(mentions_with_username)}):*\n"
+            # Формируем список без нумерации
+            mentions_list = []
+            for m in mentions_with_username:
                 username = m.get('username', '')
-                text += f"{i}. @{username}\n"
-            text += "\n"
+                mentions_list.append(f"@{username}")
+            # Оборачиваем в markdown code блок с тройными кавычками
+            text += "```\n" + "\n".join(mentions_list) + "\n```\n\n"
         
         # Добавляем информацию об обработке в конец
-        text += "✅ <b>Обработка завершена!</b>\n\n"
-        text += f"💬 <b>Чат:</b> {chat_name}\n"
+        text += "✅ *Обработка завершена!*\n\n"
+        text += f"💬 *Чат:* {chat_name}\n"
         text += f"👤 Участников: {len(participants)}\n"
         text += f"👥 Упоминаний: {len(mentions_with_username)}"
         
