@@ -721,9 +721,9 @@
                 });
                 
                 // Проверяем, можно ли повторить попытку
-                const isNetworkError = xhr.status === 0 || 
-                    xhr.statusText === '' || 
-                    xhr.readyState === 4;
+                // Только реальные сетевые ошибки (status === 0 или пустой statusText) должны повторяться
+                // HTTP ошибки (4xx, 5xx) не должны повторяться, так как это ошибки приложения
+                const isNetworkError = xhr.status === 0 || xhr.statusText === '';
                 const isRetryableError = isNetworkError && uploadRetryCount < MAX_RETRIES;
                 
                 if (isRetryableError) {
