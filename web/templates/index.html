@@ -239,15 +239,25 @@
         tg.ready();
         tg.expand();
 
-        function getUrlParams() {
-            const params = new URLSearchParams(window.location.search);
-            userId = params.get('user_id');
-            userName = params.get('user_name');
+        function initUser() {
+            // Получаем данные пользователя из Telegram WebApp API
+            const user = tg.initDataUnsafe?.user;
             
-            if (userId && userName) {
+            if (user) {
+                userId = user.id.toString();
+                userName = user.first_name || user.username || 'Пользователь';
                 userInfo.textContent = `👤 ${userName} (ID: ${userId})`;
             } else {
-                userInfo.textContent = '⚠️ Не удалось получить ID пользователя';
+                // Fallback: пытаемся получить из URL (для тестирования)
+                const params = new URLSearchParams(window.location.search);
+                userId = params.get('user_id');
+                userName = params.get('user_name') || 'Пользователь';
+                
+                if (userId) {
+                    userInfo.textContent = `👤 ${userName} (ID: ${userId})`;
+                } else {
+                    userInfo.textContent = '⚠️ Не удалось получить ID пользователя';
+                }
             }
         }
 
@@ -387,7 +397,7 @@
             }
         });
 
-        getUrlParams();
+        initUser();
     </script>
 </body>
 </html>

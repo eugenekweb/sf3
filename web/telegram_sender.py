@@ -91,19 +91,4 @@ class TelegramSender:
         """Отправка сообщения об ошибке"""
         text = f"❌ <b>Ошибка при обработке:</b>\n\n{error_message}"
         return self.send_message(chat_id, text)
-    
-    def send_success_notification(self, chat_id: int, chat_name: str, 
-                                  participants_count: int, mentions_count: int,
-                                  channels_count: int = 0) -> bool:
-        """Отправка уведомления об успешной обработке"""
-        text = (
-            f"✅ <b>Обработка завершена!</b>\n\n"
-            f"📊 <b>Чат:</b> {chat_name}\n"
-            f"👥 Участников: {participants_count}\n"
-            f"🔗 Упоминаний: {mentions_count}"
-        )
-        # Упоминаем каналы только если они есть
-        if channels_count > 0:
-            text += f"\n📢 Каналов: {channels_count}"
-        return self.send_message(chat_id, text)
 

@@ -22,6 +22,24 @@ class BotHandlers:
         self.bot_token = bot_token
 
     @staticmethod
+    def _webapp_keyboard(backend_url: str | None) -> InlineKeyboardMarkup | None:
+        """Кнопка для открытия WebApp, если URL задан"""
+        if not backend_url:
+            return None
+        # Добавляем слэш, чтобы гарантированно открыть корень с формой
+        url = backend_url.rstrip("/") + "/"
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Открыть WebApp",
+                        web_app=WebAppInfo(url=url),
+                    )
+                ]
+            ]
+        )
+
+    @staticmethod
     async def cmd_start(message: Message, backend_url: str, bot_token: str):
         """Команда /start"""
         user_id = message.from_user.id
@@ -29,16 +47,20 @@ class BotHandlers:
 
         text = (
             f"👋 Привет, {user_name}!\n\n"
-            "Этот бот помогает извлечь список участников из экспорта истории Telegram-чата.\n\n"
+            "Загружай экспорт чата через WebApp (HTTPS), так проходят и большие файлы.\n"
+            "Если отправлять файл прямо боту, сработает лимит Telegram 20 МБ.\n\n"
             "📋 <b>Как использовать:</b>\n"
-            "1. Экспортируйте историю чата в формате JSON\n"
-            "2. Отправьте JSON файл(ы) напрямую в этот чат\n"
-            "3. Бот обработает файлы и отправит результат\n\n"
-            "⚠️ <i>Ограничение: файлы до 20 МБ каждый (лимит Telegram API)</i>\n"
-            "📎 <i>Поддерживаются только JSON файлы экспорта Telegram</i>"
+            "1) Экспортируй историю чата в JSON\n"
+            "2) Нажми кнопку ниже «Открыть WebApp»\n"
+            "3) Загрузись через форму, дождись результатов\n\n"
+            "⚠️ Ограничение Telegram: в личку >20 МБ не принимаются, поэтому работаем через WebApp."
         )
 
-        await message.answer(text, parse_mode="HTML")
+        await message.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=BotHandlers._webapp_keyboard(backend_url),
+        )
         logger.info(f"User {user_id} started bot")
 
     @staticmethod
@@ -65,88 +87,21 @@ class BotHandlers:
 
     @staticmethod
     async def handle_document(message: Message, backend_url: str, bot_token: str):
-        """Обработка файла, отправленного напрямую в бота"""
-        from aiogram import Bot
-        import aiohttp
-        import tempfile
-        import os
-
-        document = message.document
-
-        # Проверка формата
-        if not document.file_name or not document.file_name.endswith(".json"):
-            await message.answer("❌ Пожалуйста, отправьте файл с расширением .json")
-            return
-
-        # Проверка размера (20 МБ лимит Telegram)
-        max_size = 20 * 1024 * 1024  # 20 МБ
-        if document.file_size and document.file_size > max_size:
+        """
+        Приём файлов в личку отключаем, чтобы не упираться в лимит 20 МБ.
+        Направляем пользователя в WebApp по HTTPS.
+        """
+        if backend_url:
+            url = backend_url.rstrip("/") + "/"
             await message.answer(
-                f"❌ Файл слишком большой ({document.file_size / 1024 / 1024:.1f} МБ). "
-                f"Максимум 20 МБ.\n\n"
-                f"💡 Для больших файлов используйте WebApp (настройте HTTPS URL в .env)"
+                "❌ Приём файлов прямо в бота отключён, используйте WebApp.\n"
+                f"🌐 Открыть WebApp: {url}",
+                reply_markup=BotHandlers._webapp_keyboard(backend_url),
             )
-            return
-
-        status_msg = await message.answer("⏳ Скачиваю и обрабатываю файл...")
-
-        bot = Bot(token=bot_token)
-        temp_path = None
-
-        try:
-            # Скачиваем файл
-            file_info = await bot.get_file(document.file_id)
-            file_path = file_info.file_path
-
-            # Создаем временный файл
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
-            temp_path = temp_file.name
-            temp_file.close()
-
-            await bot.download_file(file_path, temp_path)
-
-            # Отправляем на сервер для обработки
-            if backend_url:
-                # Используем веб-сервер для обработки
-                async with aiohttp.ClientSession() as session:
-                    with open(temp_path, "rb") as f:
-                        form_data = aiohttp.FormData()
-                        form_data.add_field("user_id", str(message.from_user.id))
-                        form_data.add_field("files", f, filename=document.file_name)
-
-                        async with session.post(
-                            f"{backend_url}/api/upload", data=form_data
-                        ) as resp:
-                            result = await resp.json()
-
-                            if resp.status == 200:
-                                # Не отправляем сообщение - результаты уже отправлены веб-сервером
-                                # Просто логируем успех
-                                logger.info(
-                                    f"File processed successfully: {result.get('message', 'OK')}"
-                                )
-                            else:
-                                await message.answer(
-                                    f"❌ Ошибка: {result.get('error', 'Неизвестная ошибка')}"
-                                )
-            else:
-                # Обработка напрямую в боте (упрощенная версия)
-                await message.answer(
-                    "⚠️ Веб-сервер не настроен. Настройте BACKEND_URL в .env"
-                )
-
-        except Exception as e:
-            logger.error(f"Error handling document: {e}", exc_info=True)
-            await message.answer(f"❌ Ошибка при обработке файла: {str(e)}")
-
-        finally:
-            # Удаляем временный файл
-            if temp_file and os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except:
-                    pass
-            await status_msg.delete()
+        else:
+            await message.answer(
+                "⚠️ BACKEND_URL не настроен. Укажите публичный HTTPS в переменной BACKEND_URL."
+            )
 
 
 def register_handlers(dp, backend_url: str, bot_token: str):

@@ -1,62 +1,61 @@
 services:
-  bot:
-    build: ./bot
-    container_name: telegram_bot
-    environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - BACKEND_URL=${BACKEND_URL:-http://localhost:5000}
-      - FLASK_ENV=${FLASK_ENV:-production}
-    depends_on:
-      - web
-    networks:
-      - app_network
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    bot:
+        build: ./bot
+        container_name: telegram_bot
+        environment:
+            - BOT_TOKEN=${BOT_TOKEN}
+            - BACKEND_URL=${BACKEND_URL:-http://localhost:5000}
+            - FLASK_ENV=${FLASK_ENV:-production}
+        depends_on:
+            - web
+        networks:
+            - app_network
+        restart: unless-stopped
+        logging:
+            driver: "json-file"
+            options:
+                max-size: "10m"
+                max-file: "3"
 
-  web:
-    build: ./web
-    container_name: web_server
-    ports:
-      - "5000:5000"
-    environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - FLASK_ENV=${FLASK_ENV:-production}
-      - DEBUG=${DEBUG:-False}
-    volumes:
-      - ./uploads:/app/uploads
-    networks:
-      - app_network
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    web:
+        build: ./web
+        container_name: web_server
+        ports:
+            - "5000:5000"
+        environment:
+            - BOT_TOKEN=${BOT_TOKEN}
+            - FLASK_ENV=${FLASK_ENV:-production}
+            - DEBUG=${DEBUG:-False}
+        volumes:
+            - ./uploads:/app/uploads
+        networks:
+            - app_network
+        restart: unless-stopped
+        logging:
+            driver: "json-file"
+            options:
+                max-size: "10m"
+                max-file: "3"
 
-  cloudflared:
-    image: ${CLOUDFLARE_TUNNEL_IMAGE}
-    container_name: cloudflared_tunnel
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    restart: unless-stopped
-    depends_on:
-      - web
-    networks:
-      - app_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    cloudflared:
+      image: ${CLOUDFLARE_TUNNEL_IMAGE}
+      container_name: cloudflared_tunnel
+      command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+      restart: unless-stopped
+      depends_on:
+        - web
+      networks:
+        - app_network
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "10m"
+          max-file: "3"
 
 networks:
-  app_network:
-    driver: bridge
+    app_network:
+        driver: bridge
 
 volumes:
-  uploads:
-    driver: local
-
+    uploads:
+        driver: local

@@ -92,30 +92,6 @@ class ExcelGenerator:
         
         logger.info(f"Added {row_idx - 5} mentions to Excel")
     
-    def add_channels_sheet(self, channels: List[Dict]):
-        """Добавление листа с каналами"""
-        headers = [
-            "Дата экспорта",
-            "Username",
-            "Имя и фамилия",
-            "Описание",
-            "Дата регистрации",
-            "Наличие канала"
-        ]
-        
-        ws = self.create_sheet("Каналы", headers)
-        
-        # Данные каналов
-        for row_idx, channel in enumerate(channels, 2):
-            ws.cell(row=row_idx, column=1, value=self.export_date)
-            ws.cell(row=row_idx, column=2, value='N/A')  # Username канала недоступен
-            ws.cell(row=row_idx, column=3, value=channel.get('name', 'Unknown Channel'))
-            ws.cell(row=row_idx, column=4, value='N/A')  # Описание недоступно
-            ws.cell(row=row_idx, column=5, value='N/A')  # Дата регистрации недоступна
-            ws.cell(row=row_idx, column=6, value='Да')  # Это канал
-        
-        logger.info(f"Added {len(channels)} channels to Excel")
-    
     def generate(self, participants: List[Dict], mentions: List[Dict], 
                  channels: List[Dict], chat_name: str = "Unknown") -> BytesIO:
         """
