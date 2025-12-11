@@ -257,7 +257,17 @@ def register_handlers(dp, backend_url: str, bot_token: str):
     @router.callback_query(F.data == "help")
     async def help_callback_handler(callback: CallbackQuery):
         await callback.answer()
-        await BotHandlers.cmd_help(callback.message, backend_url)
+        if callback.message:
+            await BotHandlers.cmd_help(callback.message, backend_url)
+        else:
+            # Если сообщение отсутствует (inline message), используем callback.answer с текстом
+            # или отправляем через callback.from_user
+            logger.warning("Help callback received without message (inline message)")
+            # Для inline сообщений можно использовать callback.answer с show_alert
+            await callback.answer(
+                "Используйте команду /help в чате с ботом для получения инструкции",
+                show_alert=True
+            )
 
     @router.message(F.document)
     async def document_handler(message: Message):

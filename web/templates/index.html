@@ -629,6 +629,31 @@
                     try {
                         const data = JSON.parse(xhr.responseText);
                         
+                        // Проверяем флаг success в ответе
+                        if (data.success === false) {
+                            // Сервер вернул успешный HTTP статус, но указал, что обработка не удалась
+                            overlay.style.display = 'none';
+                            progressContainer.style.display = 'none';
+                            loading.style.display = 'none';
+                            
+                            const errorMsg = data.error || data.message || 'Ошибка при обработке файлов';
+                            showError(errorMsg);
+                            
+                            if (typeof tg !== 'undefined' && tg && tg.sendData) {
+                                tg.sendData(JSON.stringify({
+                                    success: false,
+                                    message: '❌ ' + errorMsg,
+                                    user_id: userId
+                                }));
+                            } else if (debugMode) {
+                                console.error('DEBUG: Upload failed:', errorMsg);
+                            }
+                            
+                            submitBtn.disabled = files.length === 0;
+                            uploadRetryCount = 0;
+                            return;
+                        }
+                        
                         // Успешная загрузка - сбрасываем счетчик повторов
                         uploadRetryCount = 0;
                         
@@ -673,11 +698,13 @@
                         showError('Ошибка при обработке ответа');
                     }
                 } else {
+                    // HTTP статус не 200 - обрабатываем как ошибку
                     try {
                         const data = JSON.parse(xhr.responseText);
-                        throw new Error(data.error || 'Неизвестная ошибка');
+                        const errorMsg = data.error || data.message || 'Неизвестная ошибка';
+                        showError(errorMsg);
                     } catch (err) {
-                        showError(err.message || 'Ошибка загрузки');
+                        showError(`Ошибка загрузки (HTTP ${xhr.status})`);
                     }
                 }
                 submitBtn.disabled = files.length === 0;

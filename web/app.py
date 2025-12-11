@@ -133,15 +133,14 @@ def upload():
         
         if not file_data_list:
             if failed_files:
-                # Если уже отправили сообщение с деталями, не возвращаем ошибку в JSON
-                # чтобы избежать дублирования сообщений
+                # Если уже отправили сообщение с деталями, возвращаем HTTP 400 с success: false
+                # чтобы фронтенд правильно обработал ошибку
                 if error_message_sent:
-                    # Возвращаем ответ без error, так как сообщение уже отправлено пользователю
                     return jsonify({
                         "success": False,
-                        "message": "Все файлы содержат ошибки. Проверьте сообщения выше.",
+                        "error": "Все файлы содержат ошибки. Проверьте сообщения выше.",
                         "failed_files": failed_files
-                    }), 200  # Возвращаем 200, чтобы не триггерить обработку ошибки в клиенте
+                    }), 400  # Возвращаем 400, чтобы фронтенд обработал как ошибку
                 else:
                     # Формируем сообщение об ошибке с именами файлов (если не отправили выше)
                     if len(failed_files) == 1:
@@ -150,10 +149,14 @@ def upload():
                         file_names = ", ".join([f['name'] for f in failed_files])
                         error_msg = f"Все файлы содержат ошибки ({file_names})."
                     return jsonify({
+                        "success": False,
                         "error": error_msg,
                         "failed_files": failed_files
                     }), 400
-            return jsonify({"error": "No valid files to process"}), 400
+            return jsonify({
+                "success": False,
+                "error": "No valid files to process"
+            }), 400
         
         # Группировка файлов по чатам
         groups = FileGrouper.group_files(file_data_list)
