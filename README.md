@@ -33,10 +33,30 @@ cp .env.example .env
 # Отредактируйте .env и укажите BOT_TOKEN от @BotFather
 ```
 
-3. Запустите через Docker Compose:
-```bash
-docker-compose up -d
-```
+3. **Настройте публичный туннель (для WebApp):**
+
+   Для работы WebApp нужен публичный HTTPS URL.
+   
+   **Основной вариант — Tuna:**
+   ```bash
+   # Токен можно указать в .env (TUNA_TOKEN) или как аргумент
+   ./tunnel_setup.sh <TUNA_TOKEN>
+   # Или если токен уже в .env:
+   ./tunnel_setup.sh
+   ```
+   Скрипт:
+   - Запускает web сервер
+   - Поднимает туннель Tuna в Docker контейнере
+   - Автоматически обновляет `BACKEND_URL` в `.env`
+   - Запускает docker-compose для бота
+   
+   **Важно:** Добавьте `TUNA_TOKEN=your_token` в файл `.env` перед запуском скрипта.
+   
+   **Запасной вариант — Cloudflare (закомментирован):**
+   ```bash
+   ./setup-cloudflare-tunnel.sh
+   ```
+   При необходимости раскомментируйте сервис cloudflared в `docker-compose.yml`.
 
 4. Проверьте статус:
 ```bash
@@ -53,7 +73,19 @@ docker-compose logs -f bot
 
 # Только веб-сервер
 docker-compose logs -f web
+
+# Туннель Tuna (если запускали через tunnel_setup.sh — логи в /tmp/tuna.log)
 ```
+
+### ⚠️ Важно о туннелях
+
+**Основной:** Tuna (`tunnel_setup.sh <token>`)  
+**Запасной:** Cloudflare Tunnel (раскомментировать при необходимости)
+
+**Общее:**
+- URL может меняться при перезапуске туннеля — перезапускайте скрипт
+- Для продакшена лучше использовать свой домен + HTTPS (Let's Encrypt)
+- Подробнее: [TUNNEL_OPTIONS.md](TUNNEL_OPTIONS.md)
 
 ## Структура проекта
 

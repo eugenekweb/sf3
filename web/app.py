@@ -184,7 +184,7 @@ def upload():
             mentions_count = len([m for m in mentions if m.get('username')])
             
             excel_file = excel_gen.generate(participants, mentions, channels, "Combined result")
-            filename = f"combined_result_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
+            filename = f"combined-export-{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
             caption = (
                 f"📊 Сводный экспорт участников\n\n"
                 f"✅ Обработка завершена!\n\n"
@@ -233,7 +233,8 @@ def upload():
                 else:
                     # Генерируем и отправляем Excel
                     excel_file = excel_gen.generate(participants, mentions, channels, chat_name)
-                    filename = f"chat_export_{chat_name.replace(' ', '_')}.xlsx"
+                    safe_chat_name = secure_filename(chat_name).replace(' ', '_')
+                    filename = f"{safe_chat_name}_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
                     # Добавляем информацию об обработке в caption (без HTML тегов)
                     mentions_count = len([m for m in mentions if m.get('username')])
                     caption = (
@@ -568,7 +569,7 @@ def complete_upload():
             groups_count = 1
             
             excel_file = excel_gen.generate(participants, mentions, channels, "Combined result")
-            filename = f"combined_result_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
+            filename = f"combined-export-{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
             caption = (
                 f"📊 Сводный экспорт участников\n\n"
                 f"✅ Обработка завершена!\n\n"
@@ -613,7 +614,8 @@ def complete_upload():
                     time.sleep(0.5)
                 else:
                     excel_file = excel_gen.generate(participants, mentions, channels, chat_name)
-                    filename = f"chat_export_{secure_filename(chat_name)}.xlsx"
+                    safe_chat_name = secure_filename(chat_name).replace(' ', '_')
+                    filename = f"{safe_chat_name}_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
                     # Добавляем информацию об обработке в caption (без HTML тегов)
                     mentions_with_username = [m for m in mentions if m.get('username')]
                     mentions_count = len(mentions_with_username)

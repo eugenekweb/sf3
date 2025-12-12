@@ -146,7 +146,7 @@ class ExcelGenerator:
         Returns:
             str: Текстовое представление списка
         """
-        text = "📊 *Результаты анализа чата:*\n\n"
+        text = f"📊 *Результаты анализа чата: {chat_name}*\n\n"
 
         if participants:
             text += f"👤 *Участники ({len(participants)}):*\n"
