@@ -15,8 +15,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, template_folder='templates')
 app.config.from_object(config)
-# Увеличиваем лимиты для больших файлов
-app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2 ГБ
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 if not os.path.exists(config.UPLOAD_FOLDER):
@@ -25,8 +24,6 @@ if not os.path.exists(config.UPLOAD_FOLDER):
 @app.route('/')
 def index():
     """Главная страница с формой загрузки"""
-    # Логируем значение DEBUG для диагностики
-    logger.info(f"DEBUG mode: {config.DEBUG}")
     return render_template('index.html', debug_mode=config.DEBUG)
 
 @app.route('/api/upload', methods=['POST'])
@@ -36,71 +33,53 @@ def upload():
     temp_files = []
     combine_results = request.form.get('combine_results', 'false').lower() == 'true'
     
-    # Логируем начало загрузки
-    content_length = request.content_length or 0
-    content_length_mb = content_length / 1024 / 1024
-    logger.info(f"Upload request started, content-length: {content_length_mb:.2f} MB, method: {request.method}, content-type: {request.content_type}")
-    
     try:
-        # Получаем user_id
         user_id = request.form.get('user_id')
         if not user_id:
-            # В режиме DEBUG разрешаем работу без user_id (для тестирования)
             if config.DEBUG:
-                user_id = "123456789"  # Тестовый ID для отладки
+                user_id = "123456789"
                 logger.warning("DEBUG mode: using test user_id")
             else:
                 return jsonify({"error": "user_id not provided"}), 400
         
         user_id = int(user_id)
         
-        # Проверяем наличие файлов
         if 'files' not in request.files:
-            logger.warning("No files in request")
             return jsonify({"error": "No files provided"}), 400
         
         files = request.files.getlist('files')
         logger.info(f"Received {len(files)} file(s) for upload")
         
         if not files or all(not f.filename for f in files):
-            logger.warning("No valid filenames in request")
             return jsonify({"error": "No files selected"}), 400
         
-        # Проверка количества файлов
         if len(files) > config.MAX_FILES:
             return jsonify({"error": f"Maximum {config.MAX_FILES} files allowed"}), 400
         
-        # Сохранение файлов во временную директорию
         parser = ChatParser()
         file_data_list = []
-        failed_files = []  # Список сломанных файлов
+        failed_files = []
         
         for file in files:
             if not file or not file.filename:
                 continue
             
             if not allowed_file(file.filename):
-                logger.warning(f"File {file.filename} has invalid extension")
                 failed_files.append({"name": file.filename, "error": "Неверное расширение файла"})
                 continue
             
-            # Сохраняем во временный файл
             filename = secure_filename(file.filename)
             temp_path = os.path.join(config.UPLOAD_FOLDER, f"temp_{os.urandom(8).hex()}_{filename}")
             
-            # Сохраняем файл с обработкой больших файлов
             try:
-                # Используем chunked чтение для больших файлов
                 with open(temp_path, 'wb') as f:
                     while True:
-                        chunk = file.read(8192)  # Читаем по 8KB
+                        chunk = file.read(8192)
                         if not chunk:
                             break
                         f.write(chunk)
                 
-                # Проверяем, что файл сохранился
-                saved_size = os.path.getsize(temp_path)
-                logger.info(f"File saved: {filename}, size: {saved_size / 1024 / 1024:.2f} MB")
+                logger.info(f"File saved: {filename}, size: {os.path.getsize(temp_path) / 1024 / 1024:.2f} MB")
                 temp_files.append(temp_path)
             except Exception as save_error:
                 logger.error(f"Error saving file {filename}: {save_error}")
@@ -108,17 +87,14 @@ def upload():
                 continue
             
             try:
-                # Парсим файл
                 file_data = parser.parse_file(temp_path)
                 file_data['filepath'] = temp_path
                 file_data_list.append(file_data)
             except Exception as e:
-                error_msg = str(e)
                 logger.error(f"Error parsing file {filename}: {e}")
-                failed_files.append({"name": filename, "error": error_msg})
+                failed_files.append({"name": filename, "error": str(e)})
                 continue
         
-        # Если есть сломанные файлы, отправляем информацию пользователю
         error_message_sent = False
         if failed_files and user_id and config.BOT_TOKEN:
             sender = TelegramSender(config.BOT_TOKEN)
@@ -127,26 +103,21 @@ def upload():
                 error_text += f"📄 *{failed['name']}*\n"
                 error_text += f"   {failed['error']}\n\n"
             
-            # Если файлов несколько и есть успешно обработанные - добавляем сообщение
             if len(files) > len(failed_files) and file_data_list:
                 error_text += "Эти файлы были пропущены. Остальные файлы обрабатываются."
-            # Если файл только один - не добавляем сообщение об остальных
             
             sender.send_message(user_id, error_text, parse_mode="Markdown")
             error_message_sent = True
         
         if not file_data_list:
             if failed_files:
-                # Если уже отправили сообщение с деталями, возвращаем HTTP 400 с success: false
-                # чтобы фронтенд правильно обработал ошибку
                 if error_message_sent:
                     return jsonify({
                         "success": False,
                         "error": "Все файлы содержат ошибки. Проверьте сообщения выше.",
                         "failed_files": failed_files
-                    }), 400  # Возвращаем 400, чтобы фронтенд обработал как ошибку
+                    }), 400
                 else:
-                    # Формируем сообщение об ошибке с именами файлов (если не отправили выше)
                     if len(failed_files) == 1:
                         error_msg = f"Файл {failed_files[0]['name']}: {failed_files[0]['error']}"
                     else:
@@ -162,14 +133,12 @@ def upload():
                 "error": "No valid files to process"
             }), 400
         
-        # Проверка BOT_TOKEN
         if not config.BOT_TOKEN:
             return jsonify({"error": "BOT_TOKEN not configured"}), 500
         
         sender = TelegramSender(config.BOT_TOKEN)
         excel_gen = ExcelGenerator()
         
-        # Если выбран режим объединения всех результатов в один файл
         if combine_results:
             logger.info("Combine results flag is ON. Merging all files into one result.")
             parser.reset()
@@ -195,10 +164,7 @@ def upload():
             sender.send_document(user_id, excel_file, filename, caption=caption)
             time.sleep(0.5)
         else:
-            # Группировка файлов по чатам
             groups = FileGrouper.group_files(file_data_list)
-            
-            import time
             total_chats = len(groups)
             chat_index = 0
             
@@ -207,11 +173,7 @@ def upload():
                 chat_name = chat_key[0] or "Unknown"
                 logger.info(f"Processing chat: {chat_name} ({len(chat_files)} files)")
                 
-                
-                # Объединяем сообщения из всех файлов чата
                 all_messages = FileGrouper.merge_messages(chat_files)
-                
-                # Парсим сообщения
                 parser.reset()
                 parser.process_messages(all_messages)
                 results = parser.get_results()
@@ -223,19 +185,14 @@ def upload():
                 
                 logger.info(f"Chat {chat_name}: {total_participants} participants, {len(mentions)} mentions, {len(channels)} channels")
                 
-                # Определяем формат результата
                 if total_participants < 50:
-                    # Отправляем текстовый список с информацией об обработке
                     text_list = excel_gen.generate_text_list(participants, mentions, channels, chat_name)
-                    # Используем Markdown для корректного отображения code блоков
                     sender.send_message(user_id, text_list, parse_mode="Markdown")
-                    time.sleep(0.5)  # Задержка после текстового списка
+                    time.sleep(0.5)
                 else:
-                    # Генерируем и отправляем Excel
                     excel_file = excel_gen.generate(participants, mentions, channels, chat_name)
                     safe_chat_name = secure_filename(chat_name).replace(' ', '_')
                     filename = f"{safe_chat_name}_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
-                    # Добавляем информацию об обработке в caption (без HTML тегов)
                     mentions_count = len([m for m in mentions if m.get('username')])
                     caption = (
                         f"📊 Экспорт участников чата: {chat_name}\n\n"
@@ -245,14 +202,12 @@ def upload():
                         f"👥 Упоминаний: {mentions_count}"
                     )
                     sender.send_document(user_id, excel_file, filename, caption=caption)
-                    time.sleep(0.5)  # Задержка после отправки файла
+                    time.sleep(0.5)
         
-            # Финальное сообщение с информацией об обработанных файлах
             total_files_processed = len(file_data_list)
-            total_files_uploaded = len(files)  # Общее количество загруженных файлов в этом запросе
+            total_files_uploaded = len(files)
             failed_count = len(failed_files) if 'failed_files' in locals() else 0
             
-            # Отправляем финальное сообщение только если было несколько файлов или есть ошибки
             if total_files_uploaded > 1 or failed_count > 0:
                 time.sleep(0.5)
                 if failed_count > 0:
@@ -268,9 +223,7 @@ def upload():
                         parse_mode="Markdown"
                     )
         
-        # Отправляем кнопки загрузки и помощи после всех результатов (ВСЕГДА)
         time.sleep(0.5)
-        logger.info(f"Preparing to send keyboard buttons. BACKEND_URL: {config.BACKEND_URL}, BOT_TOKEN: {'set' if config.BOT_TOKEN else 'not set'}")
         if config.BACKEND_URL and config.BACKEND_URL.strip():
             webapp_url = config.BACKEND_URL.rstrip("/") + "/"
             keyboard = {
@@ -289,17 +242,13 @@ def upload():
                     ]
                 ]
             }
-            logger.info(f"Sending keyboard buttons to user {user_id}, BACKEND_URL: {config.BACKEND_URL}")
-            result = sender.send_message_with_keyboard(
+            sender.send_message_with_keyboard(
                 user_id,
                 "📤 *Хотите загрузить еще файлы?*\n\nНажмите кнопку ниже, чтобы открыть форму загрузки.",
                 keyboard,
                 parse_mode="Markdown"
             )
-            if not result:
-                logger.error(f"Failed to send keyboard buttons to user {user_id}")
         elif config.BOT_TOKEN:
-            # Если BACKEND_URL не настроен, отправляем только кнопку помощи
             keyboard = {
                 "inline_keyboard": [
                     [
@@ -317,19 +266,21 @@ def upload():
                 parse_mode="Markdown"
             )
         
+        if combine_results:
+            groups_count = 1
+        else:
+            groups_count = len(groups) if 'groups' in locals() else 0
+        
         return jsonify({
             "success": True,
-            "message": f"Обработано {len(file_data_list)} файл(ов), {len(groups)} чат(ов)"
+            "message": f"Обработано {len(file_data_list)} файл(ов), {groups_count} чат(ов)"
         })
     
     except Exception as e:
         logger.error(f"Upload error: {e}", exc_info=True)
-        # Не отправляем сообщение об ошибке здесь, так как детальные ошибки уже отправлены выше
-        # или будут отправлены через JSON response
         return jsonify({"error": str(e)}), 500
     
     finally:
-        # Удаляем временные файлы
         for temp_file in temp_files:
             try:
                 if os.path.exists(temp_file):
@@ -430,15 +381,12 @@ def complete_upload():
                 return jsonify({"success": False, "error": "user_id not provided"}), 400
         
         user_id = int(user_id)
-        
-        # Получаем список upload_ids
         upload_ids = request.form.getlist('upload_ids[]')
         if not upload_ids:
             return jsonify({"success": False, "error": "No upload_ids provided"}), 400
         
         logger.info(f"Completing upload for {len(upload_ids)} file(s), user_id: {user_id}")
         
-        # Собираем файлы из чанков
         parser = ChatParser()
         file_data_list = []
         failed_files = []
@@ -451,7 +399,6 @@ def complete_upload():
                 failed_files.append({"name": upload_id, "error": "Чанки файла не найдены"})
                 continue
             
-            # Читаем метаданные файла
             metadata_path = os.path.join(chunks_dir, 'metadata.json')
             if os.path.exists(metadata_path):
                 with open(metadata_path, 'r', encoding='utf-8') as f:
@@ -460,7 +407,6 @@ def complete_upload():
             else:
                 filename = f"{upload_id}.json"
             
-            # Находим все чанки и сортируем по индексу
             chunk_files = []
             for f in os.listdir(chunks_dir):
                 if f.startswith('chunk_') and f.endswith('.part'):
@@ -474,7 +420,6 @@ def complete_upload():
                 failed_files.append({"name": filename, "error": "Чанки не найдены"})
                 continue
             
-            # Собираем файл из чанков
             temp_path = os.path.join(config.UPLOAD_FOLDER, f"temp_{os.urandom(8).hex()}_{secure_filename(filename)}")
             
             try:
@@ -487,7 +432,6 @@ def complete_upload():
                 temp_files.append(temp_path)
                 chunks_dirs.append(chunks_dir)
                 
-                # Парсим файл
                 try:
                     file_data = parser.parse_file(temp_path)
                     file_data['filepath'] = temp_path
@@ -503,7 +447,6 @@ def complete_upload():
                 failed_files.append({"name": filename, "error": f"Ошибка сборки файла: {str(e)}"})
                 continue
         
-        # Отправляем информацию об ошибках, если есть
         error_message_sent = False
         if failed_files and user_id and config.BOT_TOKEN:
             sender = TelegramSender(config.BOT_TOKEN)
@@ -542,12 +485,6 @@ def complete_upload():
                 "error": "No valid files to process"
             }), 400
         
-        # Обработка файлов (копируем логику из upload())
-        # Логируем данные файлов перед группировкой
-        logger.info(f"Files before grouping: {len(file_data_list)}")
-        for idx, fd in enumerate(file_data_list):
-            logger.info(f"  File {idx + 1}: name={fd.get('name')}, type={fd.get('type')}, id={fd.get('id')}")
-        
         sender = TelegramSender(config.BOT_TOKEN)
         excel_gen = ExcelGenerator()
         groups_count = 0
@@ -581,21 +518,12 @@ def complete_upload():
             time.sleep(0.5)
         else:
             groups = FileGrouper.group_files(file_data_list)
+            groups_count = len(groups)
             
-            # Логируем результат группировки
-            logger.info(f"Groups after grouping: {len(groups)}")
             for chat_key, chat_files in groups.items():
-                logger.info(f"  Group {chat_key}: {len(chat_files)} files")
-            
-            total_chats = len(groups)
-            groups_count = total_chats
-            total_participants = 0
-            
-            for chat_index, (chat_key, chat_files) in enumerate(groups.items(), 1):
                 chat_name = chat_key[0] or "Unknown"
                 logger.info(f"Processing chat: {chat_name} ({len(chat_files)} files)")
                 
-                # Создаем новый парсер для каждого чата
                 parser = ChatParser()
                 all_messages = FileGrouper.merge_messages(chat_files)
                 parser.reset()
@@ -605,7 +533,6 @@ def complete_upload():
                 participants = results['participants']
                 mentions = results['mentions']
                 channels = results['channels']
-                
                 total_participants = len(participants)
                 
                 if total_participants < 50:
@@ -616,7 +543,6 @@ def complete_upload():
                     excel_file = excel_gen.generate(participants, mentions, channels, chat_name)
                     safe_chat_name = secure_filename(chat_name).replace(' ', '_')
                     filename = f"{safe_chat_name}_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
-                    # Добавляем информацию об обработке в caption (без HTML тегов)
                     mentions_with_username = [m for m in mentions if m.get('username')]
                     mentions_count = len(mentions_with_username)
                     caption = (
@@ -629,7 +555,6 @@ def complete_upload():
                     sender.send_document(user_id, excel_file, filename, caption=caption)
                     time.sleep(0.5)
         
-            # Финальное сообщение
             total_files_processed = len(file_data_list)
             total_files_uploaded = len(upload_ids)
             failed_count = len(failed_files) if 'failed_files' in locals() else 0
@@ -649,7 +574,6 @@ def complete_upload():
                         parse_mode="Markdown"
                     )
         
-        # Отправляем кнопки загрузки и помощи
         time.sleep(2)
         if config.BACKEND_URL and config.BACKEND_URL.strip():
             webapp_url = config.BACKEND_URL.rstrip("/") + "/"
@@ -703,7 +627,6 @@ def complete_upload():
         return jsonify({"success": False, "error": str(e)}), 500
     
     finally:
-        # Удаляем временные файлы и директории с чанками
         for temp_file in temp_files:
             try:
                 if os.path.exists(temp_file):
@@ -722,7 +645,6 @@ def complete_upload():
 
 @app.errorhandler(413)
 def too_large(e):
-    """Ошибка: файл слишком большой"""
     return jsonify({"error": "File too large (max 2GB)"}), 413
 
 if __name__ == "__main__":

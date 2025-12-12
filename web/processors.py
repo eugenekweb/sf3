@@ -11,48 +11,37 @@ class ChatParser:
     """Парсер экспорта Telegram чата"""
 
     def __init__(self):
-        self.participants: Dict[str, Dict] = {}  # from_id -> {from_id, name}
-        self.mentions: Dict[str, Dict] = {}  # username -> {username}
-        self.channels: Dict[str, Dict] = {}  # channel_id -> {name}
+        self.participants: Dict[str, Dict] = {}
+        self.mentions: Dict[str, Dict] = {}
+        self.channels: Dict[str, Dict] = {}
         self.deleted_accounts: Set[str] = set()
 
     def parse_file(self, filepath: str) -> Dict:
         """Парсинг одного JSON файла с проверкой кодировки и структуры"""
         try:
-            # Сначала пытаемся прочитать как UTF-8
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
                     data = json.load(f)
             except (UnicodeDecodeError, json.JSONDecodeError) as e:
-                # Если не получилось, проверяем кодировку через chardet
                 with open(filepath, "rb") as f:
                     raw_data = f.read()
                     detected = chardet.detect(raw_data)
                     
-                    # Если chardet определил не UTF-8 с высокой уверенностью, и это не ASCII
                     if detected and detected.get("encoding", "").lower() not in ["utf-8", "utf-8-sig", "ascii"]:
                         confidence = detected.get("confidence", 0)
-                        # Повышаем порог уверенности до 0.9, чтобы избежать ложных срабатываний
                         if confidence > 0.9:
                             raise ValueError(
                                 f"Файл не в кодировке UTF-8. Обнаружена кодировка: {detected['encoding']} "
                                 f"(уверенность: {confidence:.0%}). Конвертируйте файл в UTF-8."
                             )
-                    # Пробуем прочитать с определенной кодировкой
-                    encoding = detected.get("encoding", "utf-8") if detected else "utf-8"
-                    # В любом случае пробуем прочитать как UTF-8 с errors=\"replace\"
-                    # (chardet часто ошибается, поэтому пытаемся восстановиться)
                     try:
                         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
                             data = json.load(f)
                     except json.JSONDecodeError:
-                        # Если не удалось, но encoding не UTF-8 — сообщаем про некорректный JSON
                         raise ValueError(f"Ошибка парсинга JSON. Возможно, файл поврежден или не является JSON.")
                     except Exception:
-                        # Если чтение вообще не удалось — пробрасываем исходную ошибку
                         raise e
 
-            # Проверка, что messages - это массив (главное требование)
             if "messages" not in data:
                 raise ValueError(
                     "Файл не содержит поле 'messages'. Это не экспорт Telegram чата?"
@@ -80,46 +69,35 @@ class ChatParser:
             raise ValueError(f"Ошибка чтения файла: {e}")
 
     def extract_participants(self, messages: List[Dict]) -> None:
-        """
-        Извлечение участников из сообщений
-        Кейс 1: from + from_id (строгая связь)
-        Кейс 3: forwarded_from + forwarded_from_id
-        """
+        """Извлечение участников из сообщений"""
         for msg in messages:
-            # Кейс 1: Обычные сообщения
             if msg.get("type") == "message":
                 from_id = msg.get("from_id")
                 from_name = msg.get("from")
 
-                # Пропускаем удаленные аккаунты
                 if not from_id or from_id in self.deleted_accounts:
                     continue
 
-                # Проверка на удаленный аккаунт
                 if isinstance(from_id, str) and "deleted" in from_id.lower():
                     self.deleted_accounts.add(from_id)
                     continue
 
-                # Сохраняем участника (строгая пара: имя - ИД)
                 if from_id not in self.participants:
                     self.participants[from_id] = {
                         "from_id": from_id,
                         "name": from_name or "Unknown",
                     }
 
-            # Кейс 3: Пересланные сообщения
             forwarded_from_id = msg.get("forwarded_from_id")
             forwarded_from_name = msg.get("forwarded_from")
 
             if forwarded_from_id and forwarded_from_name:
-                # Пропускаем каналы (они обрабатываются отдельно)
                 if (
                     isinstance(forwarded_from_id, str)
                     and "channel" in forwarded_from_id.lower()
                 ):
                     continue
 
-                # Сохраняем участника из пересланного сообщения
                 if forwarded_from_id not in self.participants:
                     self.participants[forwarded_from_id] = {
                         "from_id": forwarded_from_id,
@@ -217,7 +195,6 @@ class ChatParser:
                         }
 
     def match_mentions_to_participants(self) -> None:
-        """Сопоставление упоминаний с участниками - отключено, используем только прямые связи"""
         pass
 
     def process_messages(self, messages: List[Dict]) -> None:
@@ -268,20 +245,15 @@ class FileGrouper:
             chat_type = file_data.get("type")
             chat_name = file_data.get("name")
             
-            # Если есть id - группируем по (type, id), игнорируя name
-            # Это позволяет объединять файлы одного чата, даже если name отличается
             if chat_id:
-                key = (None, chat_type, chat_id)  # name игнорируем при группировке
+                key = (None, chat_type, chat_id)
             else:
-                # Если id нет - группируем по (name, type)
                 key = (chat_name, chat_type, None)
             
             groups[key].append(file_data)
 
-        # После группировки обновляем name в ключе, используя первое непустое значение
         result = {}
         for key, files in groups.items():
-            # Находим первое непустое name из всех файлов группы
             final_name = None
             for file_data in files:
                 name = file_data.get("name")
@@ -289,12 +261,10 @@ class FileGrouper:
                     final_name = name
                     break
             
-            # Если не нашли name, используем из первого файла или "Неизвестный чат"
             if not final_name and files:
                 final_name = files[0].get("name") or "Неизвестный чат"
             
-            # Создаем финальный ключ с правильным name
-            final_key = (final_name, key[1], key[2])  # (name, type, id)
+            final_key = (final_name, key[1], key[2])
             result[final_key] = files
 
         return result

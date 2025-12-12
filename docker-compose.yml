@@ -1,7 +1,4 @@
 services:
-    # Tuna Tunnel — основной туннель для WebApp
-    # Раскомментируйте для автоматического запуска через docker-compose
-    # Требуется TUNA_TOKEN в .env файле
     tuna:
         image: yuccastream/tuna:latest
         container_name: tuna_tunnel
@@ -21,7 +18,6 @@ services:
         environment:
             - TUNA_TOKEN=${TUNA_TOKEN}
 
-    # Web сервер
     web:
         build: ./web
         container_name: web_server
@@ -43,7 +39,6 @@ services:
                 max-size: "10m"
                 max-file: "3"
 
-    # Бот — запускается последним
     bot:
         build: ./bot
         container_name: telegram_bot

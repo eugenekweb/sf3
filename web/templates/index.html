@@ -411,6 +411,12 @@
         let userName = null;
         let uploadStartTime = null;
         let progressTimeout = null;
+        // Переменные для функции startUpload
+        let currentFiles = null;
+        let currentIsLargeFile = false;
+        let currentXhr = null;
+        let uploadRetryCount = 0;
+        let currentFormData = null;
 
         function initUser() {
             // Получаем данные пользователя из Telegram WebApp API
@@ -667,32 +673,6 @@
                     }
                 });
 
-                xhr.addEventListener('error', () => {
-                    if (retryCount < MAX_RETRIES) {
-                        console.log(`Retrying chunk ${chunk.index} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-                        setTimeout(() => {
-                            uploadChunk(uploadInfo, chunk, retryCount + 1)
-                                .then(resolve)
-                                .catch(reject);
-                        }, 1000 * Math.pow(2, retryCount)); // Экспоненциальная задержка
-                    } else {
-                        reject(new Error('Превышено количество попыток загрузки чанка'));
-                    }
-                });
-
-                xhr.addEventListener('timeout', () => {
-                    if (retryCount < MAX_RETRIES) {
-                        console.log(`Timeout on chunk ${chunk.index}, retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-                        setTimeout(() => {
-                            uploadChunk(uploadInfo, chunk, retryCount + 1)
-                                .then(resolve)
-                                .catch(reject);
-                        }, 1000 * Math.pow(2, retryCount));
-                    } else {
-                        reject(new Error('Превышено время ожидания загрузки чанка'));
-                    }
-                });
-
                 xhr.addEventListener('error', (e) => {
                     console.error(`[uploadChunk] XHR error event:`, e);
                     if (retryCount < MAX_RETRIES) {
@@ -701,7 +681,7 @@
                             uploadChunk(uploadInfo, chunk, retryCount + 1)
                                 .then(resolve)
                                 .catch(reject);
-                        }, 1000 * Math.pow(2, retryCount));
+                        }, 1000 * Math.pow(2, retryCount)); // Экспоненциальная задержка
                     } else {
                         reject(new Error('Превышено количество попыток загрузки чанка'));
                     }
@@ -968,7 +948,6 @@
             }
         }
 
-        // Старая функция startUpload (удаляем, но оставляем для совместимости)
         function startUpload(retryAttempt = 0) {
             if (!currentFiles || !currentFiles.length || !userId) {
                 showError('Выберите файлы для загрузки');
