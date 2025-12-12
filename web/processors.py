@@ -194,8 +194,6 @@ class ChatParser:
                             "name": from_name,
                         }
 
-    def match_mentions_to_participants(self) -> None:
-        pass
 
     def process_messages(self, messages: List[Dict]) -> None:
         """Обработка всех сообщений для извлечения данных"""

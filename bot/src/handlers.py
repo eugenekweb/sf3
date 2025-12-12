@@ -67,10 +67,11 @@ class BotHandlers:
             "📋 <b>Как использовать:</b>\n"
             "1) Экспортируй историю чата в JSON\n"
             "2) Нажми кнопку ниже «Открыть WebApp»\n"
-            "3) При первом открытии появится страница сервиса Tuna с предупреждением:\n"
-            "   • На странице будет текст про безопасность\n"
-            "   • Нажми кнопку <b>«Посетить»</b> для продолжения\n"
-            "   • Это нормально — так работает туннель Tuna\n"
+            "3) <b>При первом открытии появится страница Tuna с предупреждением:</b>\n"
+            "   • На странице будет текст: \"Вы собираетесь посетить [домен].ru.tuna.am\"\n"
+            "   • И предупреждение о безопасности\n"
+            "   • <b>Нажми кнопку «Посетить»</b> для продолжения\n"
+            "   • Это нормально — так работает туннель Tuna (безопасно)\n"
             "4) В открывшемся окне выбери или перетащи JSON файлы\n"
             "5) Нажми «Загрузить и обработать», дождись результатов\n\n"
             "⚠️ Ограничение Telegram: в личку >20 МБ не принимаются, поэтому работаем через WebApp."
@@ -146,10 +147,16 @@ class BotHandlers:
         try:
             data = json.loads(message.web_app_data.data)
             user_id = data.get("user_id")
+            success = data.get("success")
 
-            logger.info(f"Received data from user {user_id}: {data}")
+            # Детальное логирование только если включено
+            from src.utils import Config as BotConfig
+            if BotConfig.VERBOSE_LOGGING:
+                logger.info(f"Received data from user {user_id}: {data}")
+            else:
+                logger.info(f"Received data from user {user_id}: success={success}")
 
-            if data.get("success"):
+            if success:
                 await message.answer(f"✅ {data.get('message', 'Готово!')}")
             else:
                 await message.answer(
@@ -244,13 +251,16 @@ class BotHandlers:
                 files = {"files": (message.document.file_name, f, "application/json")}
                 data = {"user_id": str(user_id)}
 
-                response = requests.post(api_url, files=files, data=data, timeout=300)
+                # Используем таймаут из конфигурации (по умолчанию 5 минут)
+                from src.utils import Config as BotConfig
+                timeout = getattr(BotConfig, 'UPLOAD_TIMEOUT', 300)
+                response = requests.post(api_url, files=files, data=data, timeout=timeout)
 
             # Удаляем временный файл
             try:
                 os.unlink(temp_file.name)
-            except:
-                pass
+            except OSError as e:
+                logger.warning(f"Could not delete temp file {temp_file.name}: {e}")
 
             # Отправляем только один ответ - результат или ошибку
             if response.status_code == 200:

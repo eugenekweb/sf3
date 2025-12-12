@@ -584,8 +584,8 @@
         }
 
         // Chunked Upload настройки
-        const CHUNK_SIZE = 10 * 1024 * 1024; // 10 МБ на чанк
-        const MAX_RETRIES = 3;
+        const CHUNK_SIZE = {{ chunk_size }}; // Размер чанка в байтах
+        const MAX_RETRIES = {{ max_retries }}; // Максимум попыток загрузки чанка
         let uploadState = {
             files: null,
             uploads: [], // Массив {uploadId, filename, chunks, totalChunks, uploadedChunks}
