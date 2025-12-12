@@ -60,7 +60,7 @@
         .upload-zone {
             border: 2px dashed #0088cc;
             border-radius: 8px;
-            padding: 24px;
+            padding: 16px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
@@ -91,6 +91,32 @@
         .upload-hint {
             color: #999;
             font-size: 12px;
+        }
+        
+        .combine-row {
+            display: none;
+            margin-top: 12px;
+            padding: 10px 12px;
+            background: #f4f8ff;
+            border: 1px solid #d6e4ff;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #2c3e50;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .combine-row label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            width: 100%;
+        }
+        
+        .combine-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
         }
         
         input[type="file"] {
@@ -322,6 +348,13 @@
             <div class="upload-hint">Только формат JSON</div>
         </div>
         
+        <div class="combine-row" id="combineRow">
+            <label>
+                <input type="checkbox" id="combineCheckbox">
+                <span>Объединить результаты в один файл (название: combined_result_дата.xlsx)</span>
+            </label>
+        </div>
+        
         <input type="file" id="fileInput" multiple accept=".json,application/json">
         
         <div class="files-list" id="filesList"></div>
@@ -361,6 +394,8 @@
         const uploadZone = document.getElementById('uploadZone');
         const fileInput = document.getElementById('fileInput');
         const filesList = document.getElementById('filesList');
+        const combineRow = document.getElementById('combineRow');
+        const combineCheckbox = document.getElementById('combineCheckbox');
         const submitBtn = document.getElementById('submitBtn');
         const loading = document.getElementById('loading');
         const userInfo = document.getElementById('userInfo');
@@ -479,6 +514,7 @@
         function renderFiles() {
             filesList.innerHTML = '';
             if (files.length === 0) {
+                updateCombineRow();
                 checkScrollIndicator();
                 return;
             }
@@ -494,6 +530,7 @@
                 filesList.appendChild(item);
             });
             
+            updateCombineRow();
             checkScrollIndicator();
         }
         
@@ -509,6 +546,16 @@
         
         window.addEventListener('scroll', checkScrollIndicator);
         window.addEventListener('resize', checkScrollIndicator);
+        
+        function updateCombineRow() {
+            if (!combineRow) return;
+            if (files.length >= 2) {
+                combineRow.style.display = 'flex';
+            } else {
+                combineRow.style.display = 'none';
+                if (combineCheckbox) combineCheckbox.checked = false;
+            }
+        }
 
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
@@ -530,14 +577,398 @@
             errorEl.style.display = 'block';
         }
 
-        let uploadRetryCount = 0;
+        // Chunked Upload настройки
+        const CHUNK_SIZE = 10 * 1024 * 1024; // 10 МБ на чанк
         const MAX_RETRIES = 3;
-        let currentXhr = null;
-        let currentFormData = null;
-        let currentFiles = null;
-        let currentIsLargeFile = false;
-        let currentTotalSizeMB = 0;
+        let uploadState = {
+            files: null,
+            uploads: [], // Массив {uploadId, filename, chunks, totalChunks, uploadedChunks}
+            currentFileIndex: 0,
+            currentChunkIndex: 0,
+            totalBytes: 0,
+            uploadedBytes: 0
+        };
 
+        // Генерация уникального ID для загрузки
+        function generateUploadId() {
+            return 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Разбиение файла на чанки
+        function splitFileIntoChunks(file) {
+            const chunks = [];
+            let offset = 0;
+            let chunkIndex = 0;
+            
+            while (offset < file.size) {
+                const chunk = file.slice(offset, offset + CHUNK_SIZE);
+                chunks.push({
+                    index: chunkIndex,
+                    blob: chunk,
+                    start: offset,
+                    end: Math.min(offset + CHUNK_SIZE, file.size),
+                    size: chunk.size
+                });
+                offset += CHUNK_SIZE;
+                chunkIndex++;
+            }
+            
+            return chunks;
+        }
+
+        // Загрузка одного чанка
+        async function uploadChunk(uploadInfo, chunk, retryCount = 0) {
+            return new Promise((resolve, reject) => {
+                console.log(`[uploadChunk] Starting chunk ${chunk.index + 1}/${uploadInfo.totalChunks} (retry: ${retryCount})`);
+                
+                const formData = new FormData();
+                formData.append('upload_id', uploadInfo.uploadId);
+                formData.append('chunk_index', chunk.index);
+                formData.append('total_chunks', uploadInfo.totalChunks);
+                formData.append('filename', uploadInfo.filename);
+                formData.append('file_size', uploadInfo.fileSize);
+                formData.append('chunk', chunk.blob);
+                formData.append('user_id', userId);
+
+                const xhr = new XMLHttpRequest();
+                xhr.timeout = 5 * 60 * 1000; // 5 минут на чанк
+                
+                console.log(`[uploadChunk] XHR created, opening POST to /api/upload-chunk`);
+
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        // Обновляем общий прогресс
+                        const chunkProgress = (e.loaded / e.total) * chunk.size;
+                        const fileProgress = uploadInfo.uploadedBytes + chunkProgress;
+                        const totalProgress = uploadState.uploadedBytes + chunkProgress;
+                        
+                        updateProgress(totalProgress, uploadState.totalBytes);
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    console.log(`[uploadChunk] XHR load event: status=${xhr.status}`);
+                    if (xhr.status === 200) {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            console.log(`[uploadChunk] Response:`, data);
+                            if (data.success) {
+                                resolve(data);
+                            } else {
+                                reject(new Error(data.error || 'Ошибка загрузки чанка'));
+                            }
+                        } catch (e) {
+                            console.error(`[uploadChunk] Parse error:`, e);
+                            reject(new Error('Ошибка парсинга ответа: ' + e.message));
+                        }
+                    } else {
+                        console.error(`[uploadChunk] HTTP error: ${xhr.status} ${xhr.statusText}`);
+                        reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+                    }
+                });
+
+                xhr.addEventListener('error', () => {
+                    if (retryCount < MAX_RETRIES) {
+                        console.log(`Retrying chunk ${chunk.index} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                        setTimeout(() => {
+                            uploadChunk(uploadInfo, chunk, retryCount + 1)
+                                .then(resolve)
+                                .catch(reject);
+                        }, 1000 * Math.pow(2, retryCount)); // Экспоненциальная задержка
+                    } else {
+                        reject(new Error('Превышено количество попыток загрузки чанка'));
+                    }
+                });
+
+                xhr.addEventListener('timeout', () => {
+                    if (retryCount < MAX_RETRIES) {
+                        console.log(`Timeout on chunk ${chunk.index}, retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                        setTimeout(() => {
+                            uploadChunk(uploadInfo, chunk, retryCount + 1)
+                                .then(resolve)
+                                .catch(reject);
+                        }, 1000 * Math.pow(2, retryCount));
+                    } else {
+                        reject(new Error('Превышено время ожидания загрузки чанка'));
+                    }
+                });
+
+                xhr.addEventListener('error', (e) => {
+                    console.error(`[uploadChunk] XHR error event:`, e);
+                    if (retryCount < MAX_RETRIES) {
+                        console.log(`[uploadChunk] Retrying chunk ${chunk.index} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                        setTimeout(() => {
+                            uploadChunk(uploadInfo, chunk, retryCount + 1)
+                                .then(resolve)
+                                .catch(reject);
+                        }, 1000 * Math.pow(2, retryCount));
+                    } else {
+                        reject(new Error('Превышено количество попыток загрузки чанка'));
+                    }
+                });
+
+                xhr.addEventListener('timeout', () => {
+                    console.error(`[uploadChunk] XHR timeout`);
+                    if (retryCount < MAX_RETRIES) {
+                        console.log(`[uploadChunk] Retrying after timeout (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                        setTimeout(() => {
+                            uploadChunk(uploadInfo, chunk, retryCount + 1)
+                                .then(resolve)
+                                .catch(reject);
+                        }, 1000 * Math.pow(2, retryCount));
+                    } else {
+                        reject(new Error('Превышено время ожидания загрузки чанка'));
+                    }
+                });
+                
+                console.log(`[uploadChunk] Opening POST request to /api/upload-chunk`);
+                xhr.open('POST', '/api/upload-chunk');
+                console.log(`[uploadChunk] Sending request...`);
+                xhr.send(formData);
+            });
+        }
+
+        // Обновление прогресс-бара
+        function updateProgress(uploaded, total) {
+            const percent = Math.round((uploaded / total) * 100);
+            const uploadedMB = (uploaded / 1024 / 1024).toFixed(2);
+            const totalMB = (total / 1024 / 1024).toFixed(2);
+            
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+            
+            if (progressContainer.style.display !== 'block') {
+                progressContainer.style.display = 'block';
+            }
+            
+            // Обновляем статусы файлов
+            uploadState.uploads.forEach((uploadInfo, fileIdx) => {
+                const fileProgressEl = document.getElementById(`file-progress-${fileIdx}`);
+                if (fileProgressEl) {
+                    const filePercent = Math.round((uploadInfo.uploadedBytes / uploadInfo.fileSize) * 100);
+                    if (filePercent === 100) {
+                        fileProgressEl.querySelector('.file-progress-status').textContent = '📤';
+                    } else if (uploadInfo.uploadedBytes > 0) {
+                        fileProgressEl.querySelector('.file-progress-status').textContent = '⏳';
+                    }
+                }
+            });
+        }
+
+        // Загрузка всех файлов по частям
+        async function startChunkedUpload() {
+            console.log('startChunkedUpload called');
+            
+            if (!files.length || !userId) {
+                console.error('Validation failed: files=', files.length, 'userId=', userId);
+                showError('Выберите файлы для загрузки');
+                return;
+            }
+
+            console.log('Initializing upload state...');
+            submitBtn.disabled = true;
+            loading.style.display = 'block';
+            errorEl.style.display = 'none';
+            overlay.style.display = 'block';
+            progressContainer.style.display = 'block';
+
+            // Инициализация состояния загрузки
+            uploadState.files = files;
+            uploadState.uploads = [];
+            uploadState.totalBytes = 0;
+            uploadState.uploadedBytes = 0;
+
+            console.log('Splitting files into chunks...');
+            // Подготовка файлов: разбиение на чанки
+            files.forEach((file, fileIdx) => {
+                const chunks = splitFileIntoChunks(file);
+                const uploadId = generateUploadId();
+                
+                console.log(`File ${fileIdx + 1}: ${file.name}, ${chunks.length} chunks, ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+                
+                uploadState.uploads.push({
+                    uploadId: uploadId,
+                    filename: file.name,
+                    fileSize: file.size,
+                    chunks: chunks,
+                    totalChunks: chunks.length,
+                    uploadedChunks: 0,
+                    uploadedBytes: 0
+                });
+                
+                uploadState.totalBytes += file.size;
+            });
+
+            console.log(`Total: ${uploadState.uploads.length} file(s), ${(uploadState.totalBytes / 1024 / 1024).toFixed(2)} MB, ${uploadState.uploads.reduce((sum, u) => sum + u.totalChunks, 0)} chunks total`);
+
+            // Инициализируем прогресс для каждого файла
+            filesProgress.innerHTML = '';
+            uploadState.uploads.forEach((uploadInfo, fileIdx) => {
+                const fileProgress = document.createElement('div');
+                fileProgress.className = 'file-progress';
+                fileProgress.id = `file-progress-${fileIdx}`;
+                const fileSizeMB = (uploadInfo.fileSize / 1024 / 1024).toFixed(2);
+                fileProgress.innerHTML = `
+                    <span class="file-progress-name">${uploadInfo.filename} (${fileSizeMB} MB)</span>
+                    <span class="file-progress-status">⏳</span>
+                `;
+                filesProgress.appendChild(fileProgress);
+            });
+
+            console.log(`Starting chunked upload: ${files.length} file(s), ${(uploadState.totalBytes / 1024 / 1024).toFixed(2)} MB total`);
+
+            try {
+                console.log('Starting file upload loop...');
+                // Загружаем все файлы последовательно
+                for (let fileIdx = 0; fileIdx < uploadState.uploads.length; fileIdx++) {
+                    const uploadInfo = uploadState.uploads[fileIdx];
+                    console.log(`[File ${fileIdx + 1}/${uploadState.uploads.length}] Starting: ${uploadInfo.filename} (${uploadInfo.totalChunks} chunks)`);
+
+                    // Загружаем все чанки файла последовательно
+                    for (let chunkIdx = 0; chunkIdx < uploadInfo.chunks.length; chunkIdx++) {
+                        const chunk = uploadInfo.chunks[chunkIdx];
+                        console.log(`[File ${fileIdx + 1}] [Chunk ${chunkIdx + 1}/${uploadInfo.totalChunks}] Starting upload...`);
+
+                        await uploadChunk(uploadInfo, chunk);
+                        
+                        console.log(`[File ${fileIdx + 1}] [Chunk ${chunkIdx + 1}/${uploadInfo.totalChunks}] Uploaded successfully`);
+                        
+                        // Обновляем прогресс файла
+                        uploadInfo.uploadedChunks++;
+                        uploadInfo.uploadedBytes += chunk.size;
+                        uploadState.uploadedBytes += chunk.size;
+                        
+                        updateProgress(uploadState.uploadedBytes, uploadState.totalBytes);
+                    }
+
+                    // Отмечаем файл как загруженный
+                    const fileProgressEl = document.getElementById(`file-progress-${fileIdx}`);
+                    if (fileProgressEl) {
+                        fileProgressEl.querySelector('.file-progress-status').textContent = '✅';
+                    }
+                }
+
+                // Все чанки загружены, вызываем завершение загрузки и обработку
+                console.log('All chunks uploaded, completing upload...');
+                
+                const formData = new FormData();
+                formData.append('user_id', userId);
+                uploadState.uploads.forEach((uploadInfo) => {
+                    formData.append('upload_ids[]', uploadInfo.uploadId);
+                });
+                formData.append('combine_results', combineCheckbox && combineCheckbox.checked ? 'true' : 'false');
+
+                const xhr = new XMLHttpRequest();
+                xhr.timeout = 30 * 60 * 1000; // 30 минут на обработку
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            
+                            if (data.success === false) {
+                                showError(data.error || data.message || 'Ошибка обработки файлов');
+                                overlay.style.display = 'none';
+                                progressContainer.style.display = 'none';
+                                loading.style.display = 'none';
+                                submitBtn.disabled = files.length === 0;
+                                
+                                if (typeof tg !== 'undefined' && tg && tg.sendData) {
+                                    tg.sendData(JSON.stringify({
+                                        success: false,
+                                        message: '❌ Ошибка обработки файлов',
+                                        user_id: userId
+                                    }));
+                                }
+                                return;
+                            }
+
+                            // Успешная обработка
+                            overlay.style.display = 'none';
+                            progressContainer.style.display = 'none';
+                            loading.style.display = 'none';
+
+                            // Отмечаем все файлы как обработанные
+                            uploadState.uploads.forEach((uploadInfo, fileIdx) => {
+                                const fileProgressEl = document.getElementById(`file-progress-${fileIdx}`);
+                                if (fileProgressEl) {
+                                    fileProgressEl.querySelector('.file-progress-status').textContent = '✅';
+                                }
+                            });
+
+                            // Отправляем данные в Telegram
+                            if (typeof tg !== 'undefined' && tg && tg.sendData) {
+                                tg.sendData(JSON.stringify({
+                                    success: true,
+                                    message: data.message || '✅ Файлы успешно обработаны!',
+                                    user_id: userId
+                                }));
+                            }
+
+                            // Очищаем форму
+                            files = [];
+                            uploadState.uploads = [];
+                            renderFiles();
+                            fileInput.value = '';
+
+                            // Закрываем WebApp
+                            if (typeof tg !== 'undefined' && tg && tg.close) {
+                                setTimeout(() => {
+                                    tg.close();
+                                }, 1000);
+                            }
+                        } catch (err) {
+                            showError('Ошибка при обработке ответа: ' + err.message);
+                        }
+                    } else {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            showError(data.error || 'Ошибка обработки файлов');
+                        } catch (err) {
+                            showError(`Ошибка обработки (HTTP ${xhr.status})`);
+                        }
+                    }
+                    submitBtn.disabled = files.length === 0;
+                });
+
+                xhr.addEventListener('error', () => {
+                    showError('Ошибка сети при обработке файлов');
+                    overlay.style.display = 'none';
+                    progressContainer.style.display = 'none';
+                    loading.style.display = 'none';
+                    submitBtn.disabled = files.length === 0;
+                });
+
+                xhr.addEventListener('timeout', () => {
+                    showError('Превышено время ожидания обработки');
+                    overlay.style.display = 'none';
+                    progressContainer.style.display = 'none';
+                    loading.style.display = 'none';
+                    submitBtn.disabled = files.length === 0;
+                });
+
+                xhr.open('POST', '/api/complete-upload');
+                xhr.send(formData);
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                showError('Ошибка загрузки: ' + error.message);
+                overlay.style.display = 'none';
+                progressContainer.style.display = 'none';
+                loading.style.display = 'none';
+                submitBtn.disabled = files.length === 0;
+                
+                if (typeof tg !== 'undefined' && tg && tg.sendData) {
+                    tg.sendData(JSON.stringify({
+                        success: false,
+                        message: '❌ Ошибка загрузки файлов',
+                        user_id: userId
+                    }));
+                }
+            }
+        }
+
+        // Старая функция startUpload (удаляем, но оставляем для совместимости)
         function startUpload(retryAttempt = 0) {
             if (!currentFiles || !currentFiles.length || !userId) {
                 showError('Выберите файлы для загрузки');
@@ -563,6 +994,7 @@
 
             const formData = new FormData();
             formData.append('user_id', userId);
+            formData.append('combine_results', combineCheckbox && combineCheckbox.checked ? 'true' : 'false');
             currentFiles.forEach(f => formData.append('files', f));
             currentFormData = formData;
 
@@ -813,6 +1245,9 @@
         }
 
         submitBtn.addEventListener('click', () => {
+            console.log('Submit button clicked');
+            console.log('Files:', files.length, 'UserId:', userId);
+            
             if (!files.length || !userId) {
                 showError('Выберите файлы для загрузки');
                 return;
@@ -823,32 +1258,8 @@
                 return;
             }
 
-            // Сохраняем текущие файлы для возможных повторов
-            currentFiles = files;
-            uploadRetryCount = 0;
-            
-            // Проверяем размер файлов для определения, нужно ли сразу показать прогресс-бар
-            const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
-            currentTotalSizeMB = totalSize / 1024 / 1024;
-            currentIsLargeFile = currentTotalSizeMB > 10; // Для файлов >10 МБ показываем прогресс сразу
-            
-            console.log(`Starting upload: ${files.length} file(s), total size: ${currentTotalSizeMB.toFixed(2)} MB`);
-            
-            // Инициализируем прогресс для каждого файла
-            filesProgress.innerHTML = '';
-            files.forEach((file, i) => {
-                const fileProgress = document.createElement('div');
-                fileProgress.className = 'file-progress';
-                fileProgress.id = `file-progress-${i}`;
-                const fileSizeMB = (file.size || 0) / 1024 / 1024;
-                fileProgress.innerHTML = `
-                    <span class="file-progress-name">${file.name} (${fileSizeMB.toFixed(2)} MB)</span>
-                    <span class="file-progress-status">⏳</span>
-                `;
-                filesProgress.appendChild(fileProgress);
-            });
-
-            startUpload(0);
+            console.log('Starting chunked upload...');
+            startChunkedUpload();
         });
 
         initUser();

@@ -38,9 +38,9 @@ services:
                 max-file: "3"
 
     cloudflared:
-      image: ${CLOUDFLARE_TUNNEL_IMAGE}
+      image: ${CLOUDFLARE_TUNNEL_IMAGE:-cloudflare/cloudflared:latest}
       container_name: cloudflared_tunnel
-      command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+      command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}
       restart: unless-stopped
       depends_on:
         - web

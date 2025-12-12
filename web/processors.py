@@ -40,14 +40,16 @@ class ChatParser:
                             )
                     # Пробуем прочитать с определенной кодировкой
                     encoding = detected.get("encoding", "utf-8") if detected else "utf-8"
-                    if encoding.lower() not in ["utf-8", "utf-8-sig"]:
-                        # Пробуем прочитать как UTF-8 все равно (часто chardet ошибается)
-                        try:
-                            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-                                data = json.load(f)
-                        except json.JSONDecodeError:
-                            raise ValueError(f"Ошибка парсинга JSON. Возможно, файл поврежден или не является JSON.")
-                    else:
+                    # В любом случае пробуем прочитать как UTF-8 с errors=\"replace\"
+                    # (chardet часто ошибается, поэтому пытаемся восстановиться)
+                    try:
+                        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                            data = json.load(f)
+                    except json.JSONDecodeError:
+                        # Если не удалось, но encoding не UTF-8 — сообщаем про некорректный JSON
+                        raise ValueError(f"Ошибка парсинга JSON. Возможно, файл поврежден или не является JSON.")
+                    except Exception:
+                        # Если чтение вообще не удалось — пробрасываем исходную ошибку
                         raise e
 
             # Проверка, что messages - это массив (главное требование)
@@ -249,7 +251,9 @@ class FileGrouper:
     @staticmethod
     def group_files(file_data_list: List[Dict]) -> Dict[Tuple, List[Dict]]:
         """
-        Группировка файлов по заголовку чата (name, type, id)
+        Группировка файлов по заголовку чата.
+        Приоритет: id (если есть), иначе (name, type).
+        Это позволяет группировать файлы одного чата, даже если name отличается или отсутствует.
 
         Args:
             file_data_list: Список словарей с данными файлов {'name', 'type', 'id', 'messages', 'filepath'}
@@ -260,10 +264,40 @@ class FileGrouper:
         groups = defaultdict(list)
 
         for file_data in file_data_list:
-            key = (file_data.get("name"), file_data.get("type"), file_data.get("id"))
+            chat_id = file_data.get("id")
+            chat_type = file_data.get("type")
+            chat_name = file_data.get("name")
+            
+            # Если есть id - группируем по (type, id), игнорируя name
+            # Это позволяет объединять файлы одного чата, даже если name отличается
+            if chat_id:
+                key = (None, chat_type, chat_id)  # name игнорируем при группировке
+            else:
+                # Если id нет - группируем по (name, type)
+                key = (chat_name, chat_type, None)
+            
             groups[key].append(file_data)
 
-        return dict(groups)
+        # После группировки обновляем name в ключе, используя первое непустое значение
+        result = {}
+        for key, files in groups.items():
+            # Находим первое непустое name из всех файлов группы
+            final_name = None
+            for file_data in files:
+                name = file_data.get("name")
+                if name and name != "Неизвестный чат":
+                    final_name = name
+                    break
+            
+            # Если не нашли name, используем из первого файла или "Неизвестный чат"
+            if not final_name and files:
+                final_name = files[0].get("name") or "Неизвестный чат"
+            
+            # Создаем финальный ключ с правильным name
+            final_key = (final_name, key[1], key[2])  # (name, type, id)
+            result[final_key] = files
+
+        return result
 
     @staticmethod
     def merge_messages(file_data_list: List[Dict]) -> List[Dict]:
