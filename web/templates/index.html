@@ -362,6 +362,11 @@
 
     <div class="files-list" id="filesList"></div>
 
+    <!-- Fallback кнопка для браузера в DEBUG режиме (когда tg.MainButton недоступен) -->
+    <button id="fallbackSubmitBtn" style="display: none; width: 100%; padding: 12px; margin-top: 16px; background: var(--tg-button); color: var(--tg-button-text); border: none; border-radius: 8px; font-size: 16px; font-weight: 500; cursor: pointer; transition: opacity 0.2s;">
+        🚀 Загрузить и обработать
+    </button>
+
     <div id="statusMessage" style="margin-top: 16px; font-size: 14px; text-align: center; color: var(--tg-hint);"></div>
 
     <div class="loading" id="loading">
@@ -399,7 +404,7 @@
     const filesList = document.getElementById('filesList');
     const combineRow = document.getElementById('combineRow');
     const combineCheckbox = document.getElementById('combineCheckbox');
-    // const submitBtn = document.getElementById('submitBtn'); // Удалена, используется tg.MainButton
+    const fallbackSubmitBtn = document.getElementById('fallbackSubmitBtn'); // Fallback кнопка для DEBUG режима в браузере
     const loading = document.getElementById('loading');
     const userInfo = document.getElementById('userInfo');
     const errorEl = document.getElementById('error');
@@ -453,7 +458,10 @@
     // Обновляет состояние Главной кнопки Telegram.
 
     function updateMainButtonState() {
-        if (typeof tg !== 'undefined' && tg?.MainButton) {
+        const hasMainButton = typeof tg !== 'undefined' && tg?.MainButton;
+        const showFallbackButton = debugMode && !hasMainButton;
+        
+        if (hasMainButton) {
             const mb = tg.MainButton;
 
             if (files.length > 0 && userId) {
@@ -463,6 +471,17 @@
                 mb.enable();
             } else {
                 mb.hide();
+            }
+        }
+        
+        // Управление fallback кнопкой для DEBUG режима в браузере
+        if (showFallbackButton && fallbackSubmitBtn) {
+            if (files.length > 0 && userId) {
+                fallbackSubmitBtn.textContent = `🚀 Обработать ${files.length} файл(ов)`;
+                fallbackSubmitBtn.style.display = 'block';
+                fallbackSubmitBtn.disabled = false;
+            } else {
+                fallbackSubmitBtn.style.display = 'none';
             }
         }
     }
@@ -490,6 +509,14 @@
         loading.style.display = 'none';
 
         // Сброс состояния загрузки
+        const hasMainButton = typeof tg !== 'undefined' && tg?.MainButton;
+        const showFallbackButton = debugMode && !hasMainButton;
+        
+        // Разблокируем fallback кнопку при ошибке
+        if (showFallbackButton && fallbackSubmitBtn) {
+            fallbackSubmitBtn.disabled = false;
+        }
+        
         updateMainButtonState(); // Сбросит MainButton в состояние "Готов" или скроет
 
         // Отправляем данные об ошибке в Telegram
@@ -828,11 +855,21 @@
             return;
         }
 
+        const hasMainButton = typeof tg !== 'undefined' && tg?.MainButton;
+        const showFallbackButton = debugMode && !hasMainButton;
+
         // Блокируем кнопку и показываем лоадер
-        if (typeof tg !== 'undefined' && tg?.MainButton) {
+        if (hasMainButton) {
             tg.MainButton.showProgress();
             tg.MainButton.setText('Подготовка...');
         }
+        
+        // Отключаем fallback кнопку во время загрузки
+        if (showFallbackButton && fallbackSubmitBtn) {
+            fallbackSubmitBtn.disabled = true;
+            fallbackSubmitBtn.textContent = '⏳ Подготовка...';
+        }
+        
         loading.style.display = 'block';
         errorEl.style.display = 'none';
         overlay.style.display = 'block';
@@ -893,9 +930,14 @@
             }
 
             // Все чанки загружены, вызываем завершение загрузки и обработку
-            if (typeof tg !== 'undefined' && tg?.MainButton) {
+            if (hasMainButton) {
                 tg.MainButton.setText('Обработка...');
                 tg.MainButton.showProgress();
+            }
+            
+            // Обновляем состояние fallback кнопки
+            if (showFallbackButton && fallbackSubmitBtn) {
+                fallbackSubmitBtn.textContent = '⏳ Обработка...';
             }
 
             const formData = new FormData();
@@ -944,9 +986,14 @@
                         renderFiles();
                         fileInput.value = '';
 
-                        if (typeof tg !== 'undefined' && tg?.MainButton) {
+                        if (hasMainButton) {
                             tg.MainButton.hide();
                             tg.MainButton.hideProgress();
+                        }
+                        
+                        // Обновляем состояние fallback кнопки
+                        if (showFallbackButton && fallbackSubmitBtn) {
+                            fallbackSubmitBtn.style.display = 'none';
                         }
 
                         if (typeof tg !== 'undefined' && tg && tg.close) {
@@ -992,6 +1039,9 @@
     function initialize() {
         applyTheme();
 
+        const hasMainButton = typeof tg !== 'undefined' && tg?.MainButton;
+        const showFallbackButton = debugMode && !hasMainButton;
+
         if (typeof tg !== 'undefined' && tg) {
             // Подписываемся на смену темы
             tg.onEvent('themeChanged', applyTheme);
@@ -1011,6 +1061,12 @@
                 // Сначала скрываем, пока нет файлов
                 tg.MainButton.hide();
             }
+        }
+
+        // Настраиваем fallback кнопку для DEBUG режима в браузере
+        if (showFallbackButton && fallbackSubmitBtn) {
+            fallbackSubmitBtn.addEventListener('click', startChunkedUpload);
+            // Кнопка будет показываться/скрываться через updateMainButtonState()
         }
 
         initUser();
