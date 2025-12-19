@@ -415,12 +415,6 @@
     let userName = null;
     let uploadStartTime = null;
     let progressTimeout = null;
-    // Переменные для функции startUpload
-    let currentFiles = null;
-    let currentIsLargeFile = false;
-    let currentXhr = null;
-    let uploadRetryCount = 0;
-    let currentFormData = null;
 
     // Централизованные настройки
     const CHUNK_SIZE = 10485760; // Размер чанка в байтах
@@ -496,9 +490,6 @@
         loading.style.display = 'none';
 
         // Сброс состояния загрузки
-        if (typeof uploadRetryCount !== 'undefined') {
-            uploadRetryCount = 0;
-        }
         updateMainButtonState(); // Сбросит MainButton в состояние "Готов" или скроет
 
         // Отправляем данные об ошибке в Telegram
@@ -556,8 +547,9 @@
                         showError('Введите корректный User ID (число)');
                     }
                 });
-                debugUserIdInput.value = '123456789';
-                debugSetUserIdBtn.click();
+                // В DEBUG-режиме не устанавливаем тестовый ID автоматически,
+                // чтобы избежать случайного использования тестовых данных в продакшене.
+                // При необходимости введите User ID вручную (например, 123456789) и нажмите кнопку.
             }
         } else {
             userInfo.textContent = '⚠️ Не удалось получить ID пользователя. Откройте приложение через Telegram.';
@@ -681,7 +673,18 @@
     };
 
     function generateUploadId() {
-        return 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        // Используем криптографически стойкий генератор, если доступен
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return 'upload_' + window.crypto.randomUUID();
+        }
+        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+            const array = new Uint32Array(4);
+            window.crypto.getRandomValues(array);
+            const hex = Array.from(array, v => v.toString(16).padStart(8, '0')).join('');
+            return 'upload_' + hex;
+        }
+        // Фолбэк для очень старых браузеров (менее безопасный)
+        return 'upload_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
     }
 
     function splitFileIntoChunks(file) {
@@ -747,11 +750,13 @@
 
             xhr.addEventListener('error', (e) => {
                 if (retryCount < MAX_RETRIES) {
+                    // Экспоненциальная задержка с максимумом 30 секунд
+                    const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
                     setTimeout(() => {
                         uploadChunk(uploadInfo, chunk, retryCount + 1)
                             .then(resolve)
                             .catch(reject);
-                    }, 1000 * Math.pow(2, retryCount));
+                    }, delay);
                 } else {
                     reject(new Error('Превышено количество попыток загрузки чанка'));
                 }
@@ -759,11 +764,13 @@
 
             xhr.addEventListener('timeout', () => {
                 if (retryCount < MAX_RETRIES) {
+                    // Экспоненциальная задержка с максимумом 30 секунд
+                    const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
                     setTimeout(() => {
                         uploadChunk(uploadInfo, chunk, retryCount + 1)
                             .then(resolve)
                             .catch(reject);
-                    }, 1000 * Math.pow(2, retryCount));
+                    }, delay);
                 } else {
                     reject(new Error('Превышено время ожидания загрузки чанка'));
                 }
@@ -968,191 +975,6 @@
     }
 
 
-    function startUpload(retryAttempt = 0) {
-        if (!currentFiles || !currentFiles.length || !userId) {
-            handleError('Выберите файлы для загрузки', false, false);
-            return;
-        }
-
-        // Управление MainButton
-        if (typeof tg !== 'undefined' && tg?.MainButton) {
-            tg.MainButton.showProgress();
-            tg.MainButton.setText(retryAttempt > 0 ? `Повтор (${retryAttempt}/${MAX_RETRIES})` : 'Подготовка...');
-        }
-
-        loading.style.display = 'block';
-        errorEl.style.display = 'none';
-        overlay.style.display = 'block';
-        uploadStartTime = Date.now();
-
-        if (currentIsLargeFile) {
-            progressContainer.style.display = 'block';
-        }
-
-        const formData = new FormData();
-        formData.append('user_id', userId);
-        formData.append('combine_results', combineCheckbox && combineCheckbox.checked ? 'true' : 'false');
-        currentFiles.forEach(f => formData.append('files', f));
-        currentFormData = formData;
-
-        const xhr = new XMLHttpRequest();
-        currentXhr = xhr;
-        xhr.timeout = 30 * 60 * 1000;
-
-        xhr.upload.addEventListener('progress', (e) => {
-            if (e.lengthComputable) {
-                const percent = Math.round((e.loaded / e.total) * 100);
-
-                progressBar.style.width = percent + '%';
-                progressBar.textContent = percent + '%';
-
-                if (typeof tg !== 'undefined' && tg?.MainButton) {
-                    tg.MainButton.setText(`Загрузка... ${percent}%`);
-                    tg.MainButton.disable();
-                }
-
-                const elapsed = Date.now() - uploadStartTime;
-                if (elapsed > 2000 || currentIsLargeFile) {
-                    if (progressContainer.style.display !== 'block') {
-                        progressContainer.style.display = 'block';
-                    }
-                }
-
-                const filesCount = currentFiles ? currentFiles.length : 0;
-                if (filesCount > 0) {
-                    const filesPerPercent = 100 / filesCount;
-                    currentFiles.forEach((file, i) => {
-                        const fileProgressEl = document.getElementById(`file-progress-${i}`);
-                        if (fileProgressEl) {
-                            const fileStartPercent = i * filesPerPercent;
-                            const fileEndPercent = (i + 1) * filesPerPercent;
-
-                            if (percent >= fileEndPercent) {
-                                fileProgressEl.querySelector('.file-progress-status').textContent = '📤';
-                            } else if (percent > fileStartPercent) {
-                                fileProgressEl.querySelector('.file-progress-status').textContent = '⏳';
-                            }
-                        }
-                    });
-                }
-            }
-        });
-
-        xhr.addEventListener('load', () => {
-            clearTimeout(progressTimeout);
-
-            if (typeof tg !== 'undefined' && tg?.MainButton) {
-                tg.MainButton.hideProgress();
-            }
-
-            if (xhr.status === 200) {
-                try {
-                    const data = JSON.parse(xhr.responseText);
-
-                    if (data.success === false) {
-                        const errorMsg = data.error || data.message || 'Ошибка при обработке файлов';
-                        handleError(errorMsg, true, true);
-                        return;
-                    }
-
-                    uploadRetryCount = 0;
-                    overlay.style.display = 'none';
-                    progressContainer.style.display = 'none';
-                    loading.style.display = 'none';
-
-                    currentFiles.forEach((file, i) => {
-                        const fileProgressEl = document.getElementById(`file-progress-${i}`);
-                        if (fileProgressEl) {
-                            fileProgressEl.querySelector('.file-progress-status').textContent = '✅';
-                        }
-                    });
-
-                    if (typeof tg !== 'undefined' && tg && tg.sendData) {
-                        tg.sendData(JSON.stringify({
-                            success: true,
-                            message: data.message || '✅ Файлы успешно обработаны!',
-                            user_id: userId
-                        }));
-                    }
-
-                    files = [];
-                    currentFiles = null;
-                    renderFiles();
-                    fileInput.value = '';
-                    updateMainButtonState();
-
-                    if (typeof tg !== 'undefined' && tg && tg.close) {
-                        setTimeout(() => {
-                            tg.close();
-                        }, 1000);
-                    }
-                } catch (err) {
-                    handleError('Ошибка при обработке ответа', true, true);
-                }
-            } else {
-                try {
-                    const data = JSON.parse(xhr.responseText);
-                    const errorMsg = data.error || data.message || 'Неизвестная ошибка';
-                    handleError(errorMsg + ` (HTTP ${xhr.status})`, true, true);
-                } catch (err) {
-                    handleError(`Ошибка загрузки (HTTP ${xhr.status})`, true, true);
-                }
-            }
-        });
-
-        xhr.addEventListener('error', (e) => {
-            clearTimeout(progressTimeout);
-            if (typeof tg !== 'undefined' && tg?.MainButton) {
-                tg.MainButton.hideProgress();
-            }
-
-            const isNetworkError = xhr.status === 0 || xhr.statusText === '';
-            const isRetryableError = isNetworkError && uploadRetryCount < MAX_RETRIES;
-
-            if (isRetryableError) {
-                uploadRetryCount++;
-                const retryDelay = Math.min(1000 * Math.pow(2, uploadRetryCount - 1), 10000);
-
-                setTimeout(() => {
-                    if (currentXhr === xhr) {
-                        startUpload(uploadRetryCount);
-                    }
-                }, retryDelay);
-                return;
-            }
-
-            let errorMsg = 'Ошибка сети при загрузке файлов. ';
-            if (xhr.status === 0) {
-                errorMsg += 'Возможно, соединение прервано или сервер недоступен. ';
-            } else if (xhr.status >= 500) {
-                errorMsg += 'Ошибка на сервере. Попробуйте позже. ';
-            }
-            errorMsg += 'Для больших файлов (>100 МБ) загрузка может занять несколько минут.';
-
-            handleError(errorMsg, true, true);
-        });
-
-        xhr.addEventListener('timeout', () => {
-            clearTimeout(progressTimeout);
-            if (typeof tg !== 'undefined' && tg?.MainButton) {
-                tg.MainButton.hideProgress();
-            }
-
-            const timeoutMsg = 'Превышено время ожидания (30 минут). Файл слишком большой или соединение медленное. Попробуйте загрузить файл меньшего размера или проверьте скорость интернета.';
-            handleError(timeoutMsg, true, true);
-        });
-
-        xhr.open('POST', '/api/upload');
-        xhr.send(formData);
-
-        if (!currentIsLargeFile) {
-            progressTimeout = setTimeout(() => {
-                if (progressContainer && progressContainer.style.display !== 'block') {
-                    progressContainer.style.display = 'block';
-                }
-            }, 2000);
-        }
-    }
 
     // ИНИЦИАЛИЗАЦИЯ
 

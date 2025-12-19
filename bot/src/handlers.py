@@ -253,7 +253,7 @@ class BotHandlers:
 
                 # Используем таймаут из конфигурации (по умолчанию 5 минут)
                 from src.utils import Config as BotConfig
-                timeout = getattr(BotConfig, 'UPLOAD_TIMEOUT', 300)
+                timeout = BotConfig.UPLOAD_TIMEOUT
                 response = requests.post(api_url, files=files, data=data, timeout=timeout)
 
             # Удаляем временный файл
@@ -264,7 +264,6 @@ class BotHandlers:
 
             # Отправляем только один ответ - результат или ошибку
             if response.status_code == 200:
-                result = response.json()
                 # Результат уже отправлен через TelegramSender в app.py, не дублируем
                 pass
             else:

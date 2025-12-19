@@ -10,6 +10,10 @@ NC='\033[0m'
 
 ENV_FILE=".env"
 PORT=5000
+# Используем latest тег для автоматических обновлений
+# ВНИМАНИЕ: Это создает риск supply-chain атаки, если образ будет скомпрометирован
+# Для продакшена рекомендуется зафиксировать версию (например, yuccastream/tuna:v1.2.3)
+# или использовать digest (yuccastream/tuna@sha256:...)
 TUNA_IMAGE="yuccastream/tuna:latest"
 CONTAINER_NAME="tuna_tunnel"
 
@@ -225,19 +229,26 @@ for i in {1..20}; do
     LOG_OUTPUT=$(docker logs "$CONTAINER_NAME" 2>&1)
     
     # Пробуем разные паттерны поиска URL
-    TUNNEL_URL=$(echo "$LOG_OUTPUT" | grep -oP 'https://[a-zA-Z0-9\-]+\.ru\.tuna\.am' | head -1 || echo "")
+    # Ищем полный URL с поддоменами (например: https://s16max-109-107-165-72.ru.tuna.am)
+    # Сначала ищем в строке "Forwarding" - там обычно полный URL
+    TUNNEL_URL=$(echo "$LOG_OUTPUT" | grep -i 'forwarding' | grep -oP 'https://[a-zA-Z0-9\-]+(?:\.[a-zA-Z0-9\-]+)*\.tuna\.am' | head -1 || echo "")
+    
+    # Если не нашли, ищем любой URL с https:// и .tuna.am
+    if [ -z "$TUNNEL_URL" ]; then
+        TUNNEL_URL=$(echo "$LOG_OUTPUT" | grep -oP 'https://[a-zA-Z0-9\-]+(?:\.[a-zA-Z0-9\-]+)*\.tuna\.am' | head -1 || echo "")
+    fi
     
     # Если не нашли с https://, пробуем без него
     if [ -z "$TUNNEL_URL" ]; then
-        TUNNEL_URL=$(echo "$LOG_OUTPUT" | grep -oP '[a-zA-Z0-9\-]+\.ru\.tuna\.am' | head -1 || echo "")
+        TUNNEL_URL=$(echo "$LOG_OUTPUT" | grep -oP '[a-zA-Z0-9\-]+(?:\.[a-zA-Z0-9\-]+)*\.tuna\.am' | head -1 || echo "")
         if [ -n "$TUNNEL_URL" ]; then
             TUNNEL_URL="https://$TUNNEL_URL"
         fi
     fi
     
-    # Еще один вариант - ищем любую строку с ru.tuna.am
+    # Последний вариант - ищем любую строку с tuna.am и извлекаем полный URL до пробела или конца строки
     if [ -z "$TUNNEL_URL" ]; then
-        TUNNEL_URL=$(echo "$LOG_OUTPUT" | grep -i 'ru\.tuna\.am' | grep -oP 'https?://[^\s]+' | head -1 || echo "")
+        TUNNEL_URL=$(echo "$LOG_OUTPUT" | grep -i 'tuna\.am' | grep -oP 'https?://[^\s]+\.tuna\.am' | head -1 || echo "")
     fi
     
     if [ -n "$TUNNEL_URL" ]; then
@@ -258,7 +269,7 @@ if [ -z "$TUNNEL_URL" ]; then
     echo -e "${YELLOW}Логи контейнера:${NC}"
     docker logs "$CONTAINER_NAME" 2>&1 | tail -30
     echo ""
-    echo -e "${YELLOW}Введите полный URL туннеля (пример: https://ntl6xh-109-107-165-72.ru.tuna.am):${NC}"
+    echo -e "${YELLOW}Введите полный URL туннеля (пример: https://ntl6xh-109-107-165-72.ru.tuna.am или https://xxx-xxx-xxx-xxx.tuna.am):${NC}"
     read -r TUNNEL_URL
 fi
 
@@ -297,8 +308,10 @@ fi
 # Проверяем, что URL обновился
 if grep -q "^BACKEND_URL=$TUNNEL_URL" "$ENV_FILE" || grep -q "^BACKEND_URL=$ESCAPED_URL" "$ENV_FILE"; then
     echo -e "${GREEN}✅ BACKEND_URL обновлён в $ENV_FILE${NC}"
+    echo -e "${GREEN}   URL: $TUNNEL_URL${NC}"
 else
     echo -e "${YELLOW}⚠️  Проверьте, что BACKEND_URL обновился в $ENV_FILE${NC}"
+    echo -e "${YELLOW}   Ожидаемый URL: $TUNNEL_URL${NC}"
 fi
 
 echo -e "${GREEN}✅ .env обновлён${NC}"

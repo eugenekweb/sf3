@@ -4,7 +4,6 @@ from config import config, allowed_file
 import os
 import logging
 import shutil
-import time
 import json
 from processors import ChatParser, FileGrouper
 from telegram_sender import TelegramSender
@@ -39,9 +38,9 @@ def upload():
     
     try:
         user_id_str = request.form.get('user_id')
-        user_id, error_response = validate_user_id(user_id_str, config.DEBUG)
+        user_id, error_response, status_code = validate_user_id(user_id_str, config.DEBUG)
         if error_response:
-            return error_response
+            return error_response, status_code
         
         if 'files' not in request.files:
             return jsonify({"error": "No files provided"}), 400
@@ -73,7 +72,7 @@ def upload():
             try:
                 with open(temp_path, 'wb') as f:
                     while True:
-                        chunk = file.read(8192)
+                        chunk = file.read(config.CHUNK_SIZE)
                         if not chunk:
                             break
                         f.write(chunk)
@@ -250,9 +249,9 @@ def complete_upload():
     try:
         # Получаем и валидируем user_id
         user_id_str = request.form.get('user_id')
-        user_id, error_response = validate_user_id(user_id_str, config.DEBUG)
+        user_id, error_response, status_code = validate_user_id(user_id_str, config.DEBUG)
         if error_response:
-            return error_response
+            return error_response, status_code
         upload_ids = request.form.getlist('upload_ids[]')
         if not upload_ids:
             return jsonify({"success": False, "error": "No upload_ids provided"}), 400

@@ -1,11 +1,11 @@
 """Утилиты для обработки и отправки результатов"""
 import logging
 import time
-from werkzeug.utils import secure_filename
 from processors import ChatParser, FileGrouper
 from excel_generator import ExcelGenerator
 from telegram_sender import TelegramSender
 from config import config
+from file_utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -91,15 +91,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             else:
                 excel_file = excel_gen.generate(participants, mentions, channels, chat_name)
                 # Обрабатываем имя чата для безопасного имени файла
-                if chat_name and chat_name != "Unknown":
-                    safe_chat_name = secure_filename(chat_name).replace(' ', '_').strip('_')
-                    # Если secure_filename вернул пустую строку, используем исходное имя с очисткой
-                    if not safe_chat_name:
-                        safe_chat_name = "".join(c for c in chat_name if c.isalnum() or c in (' ', '-', '_')).strip().replace(' ', '_')
-                        if not safe_chat_name:
-                            safe_chat_name = "chat"
-                else:
-                    safe_chat_name = "chat"
+                safe_chat_name = sanitize_filename(chat_name, default="chat")
                 # Всегда добавляем дату в имя файла
                 filename = f"{safe_chat_name}_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
                 mentions_with_username = [m for m in mentions if m.get('username')]

@@ -3,6 +3,7 @@ import logging
 import chardet
 from typing import Dict, List, Set, Tuple
 from collections import defaultdict
+from config import config
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,13 @@ class ChatParser:
                     raw_data = f.read()
                     detected = chardet.detect(raw_data)
                     
-                    if detected and detected.get("encoding", "").lower() not in ["utf-8", "utf-8-sig", "ascii"]:
+                    if detected:
+                        encoding = (detected.get("encoding") or "").lower()
                         confidence = detected.get("confidence", 0)
-                        if confidence > 0.9:
+                        # Разрешаем UTF-8, UTF-8-SIG и ASCII (как подмножество UTF-8)
+                        if encoding in ["utf-8", "utf-8-sig", "ascii"]:
+                            pass  # Валидные кодировки, продолжаем обработку
+                        elif confidence > config.ENCODING_CONFIDENCE_THRESHOLD:
                             raise ValueError(
                                 f"Файл не в кодировке UTF-8. Обнаружена кодировка: {detected['encoding']} "
                                 f"(уверенность: {confidence:.0%}). Конвертируйте файл в UTF-8."

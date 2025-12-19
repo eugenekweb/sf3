@@ -21,10 +21,18 @@ class Config:
     # Пороги и лимиты
     EXCEL_THRESHOLD = int(os.getenv("EXCEL_THRESHOLD", "50"))  # Порог для Excel/текст
     MAX_FILES = int(os.getenv("MAX_FILES", "10"))
-    CHUNK_SIZE = int(
-        os.getenv("CHUNK_SIZE", str(10 * 1024 * 1024))
-    )  # Размер чанка в байтах (10 МБ)
+    # Размер чанка в байтах (10 МБ)
+    CHUNK_SIZE_ENV = os.getenv("CHUNK_SIZE", str(10 * 1024 * 1024))
+    try:
+        CHUNK_SIZE = int(CHUNK_SIZE_ENV)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Invalid CHUNK_SIZE value: {CHUNK_SIZE_ENV!r}. It must be an integer number of bytes."
+        )
     MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))  # Максимум попыток загрузки чанка
+    
+    # Порог уверенности для определения кодировки (0.0-1.0)
+    ENCODING_CONFIDENCE_THRESHOLD = float(os.getenv("ENCODING_CONFIDENCE_THRESHOLD", "0.8"))
 
     @property
     def TELEGRAM_API_URL(self):
