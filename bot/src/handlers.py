@@ -204,9 +204,22 @@ class BotHandlers:
             # Только напрямую в бота (старый режим)
             await BotHandlers._process_document_directly(message, bot_token)
         else:
-            # Оба метода работают, но если HTTPS недоступен - используем прямой режим
-            # Пользователь уже отправил файл - обрабатываем напрямую (без промежуточных сообщений)
-            await BotHandlers._process_document_directly(message, bot_token)
+            # Оба метода работают
+            # Проверяем размер файла: если > 20 МБ и backend_url доступен - предлагаем WebApp
+            file_size = message.document.file_size if message.document else None
+            if backend_url and file_size and file_size > 20 * 1024 * 1024:
+                # Файл слишком большой для прямой загрузки, предлагаем WebApp
+                keyboard = await BotHandlers._webapp_keyboard(backend_url, webapp_disabled=False)
+                await message.answer(
+                    f"⚠️ Файл слишком большой ({file_size / 1024 / 1024:.1f} МБ). "
+                    f"Telegram API ограничивает прямую загрузку до 20 МБ.\n\n"
+                    f"Используйте WebApp для загрузки больших файлов:",
+                    reply_markup=keyboard,
+                )
+            else:
+                # Файл подходит для прямой загрузки или backend_url недоступен
+                # Обрабатываем напрямую (с проверкой размера внутри функции)
+                await BotHandlers._process_document_directly(message, bot_token)
 
     @staticmethod
     async def _process_document_directly(message: Message, bot_token: str):
