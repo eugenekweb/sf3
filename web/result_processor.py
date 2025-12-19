@@ -107,7 +107,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             mentions_count = len(mentions_with_username)
             channels_count = len(channels)
             
-            logger.info(f"Chat {chat_name}: {total_participants} participants, {mentions_count} mentions, {channels_count} channels")
+            logger.info(f"Chat {chat_name}: {total_participants} participants, {mentions_count} filtered mentions, {channels_count} channels")
             
             # Проверка: есть ли хоть какие-то данные? (согласовано с combined mode)
             if total_participants == 0 and mentions_count == 0 and channels_count == 0:
