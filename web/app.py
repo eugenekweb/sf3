@@ -327,8 +327,28 @@ def complete_upload():
                 with open(metadata_path, 'r', encoding='utf-8') as f:
                     metadata = json.load(f)
                 filename = metadata.get('filename', f"{upload_id}.json")
+                
+                # Проверка принадлежности upload_id пользователю (защита от IDOR)
+                metadata_user_id = metadata.get('user_id')
+                if metadata_user_id and str(metadata_user_id) != str(user_id):
+                    logger.warning(
+                        f"User ID mismatch for upload_id {upload_id}: "
+                        f"requested {user_id}, but metadata has {metadata_user_id}"
+                    )
+                    failed_files.append({
+                        "name": filename,
+                        "error": "Доступ запрещен: файл принадлежит другому пользователю"
+                    })
+                    continue
             else:
                 filename = f"{upload_id}.json"
+                # Если metadata.json отсутствует, пропускаем файл для безопасности
+                logger.warning(f"Metadata not found for upload_id {upload_id}, skipping for security")
+                failed_files.append({
+                    "name": filename,
+                    "error": "Метаданные файла не найдены"
+                })
+                continue
             
             chunk_files = []
             for f in os.listdir(chunks_dir):
