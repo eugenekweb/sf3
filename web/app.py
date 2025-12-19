@@ -347,7 +347,19 @@ def complete_upload():
                 
                 # Проверка принадлежности upload_id пользователю (защита от IDOR)
                 metadata_user_id = metadata.get('user_id')
-                if metadata_user_id and str(metadata_user_id) != str(user_id):
+                # Явно проверяем наличие user_id в метаданных (отклоняем, если отсутствует)
+                if metadata_user_id is None:
+                    logger.warning(
+                        f"Missing user_id in metadata for upload_id {upload_id}. "
+                        f"Rejecting for security."
+                    )
+                    failed_files.append({
+                        "name": filename,
+                        "error": "Метаданные файла повреждены: отсутствует идентификатор пользователя"
+                    })
+                    continue
+                # Проверяем соответствие user_id
+                if str(metadata_user_id) != str(user_id):
                     logger.warning(
                         f"User ID mismatch for upload_id {upload_id}: "
                         f"requested {user_id}, but metadata has {metadata_user_id}"
