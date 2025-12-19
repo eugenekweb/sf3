@@ -297,6 +297,10 @@ def complete_upload():
             
             temp_path = os.path.join(config.UPLOAD_FOLDER, f"temp_{os.urandom(8).hex()}_{secure_filename(filename)}")
             
+            # Добавляем ресурсы в списки для очистки ДО операций, которые могут упасть
+            temp_files.append(temp_path)
+            chunks_dirs.append(chunks_dir)
+            
             try:
                 with open(temp_path, 'wb') as outfile:
                     for chunk_index, chunk_path in chunk_files:
@@ -304,8 +308,6 @@ def complete_upload():
                             shutil.copyfileobj(chunk_file, outfile)
                 
                 logger.info(f"File assembled: {filename}, size: {os.path.getsize(temp_path) / 1024 / 1024:.2f} MB")
-                temp_files.append(temp_path)
-                chunks_dirs.append(chunks_dir)
                 
                 try:
                     file_data = parser.parse_file(temp_path)
