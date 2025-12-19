@@ -1001,9 +1001,12 @@
                 // Привязываем основное действие к Главной кнопке
                 tg.MainButton.onClick(startChunkedUpload);
                 // Устанавливаем базовые параметры
+                // Используем значения напрямую из tg.themeParams, так как Telegram API не поддерживает CSS переменные
+                const buttonColor = tg.themeParams?.button_color || '#0088cc';
+                const buttonTextColor = tg.themeParams?.button_text_color || 'white';
                 tg.MainButton.setParams({
-                    text_color: 'var(--tg-button-text)',
-                    color: 'var(--tg-button)'
+                    text_color: buttonTextColor,
+                    color: buttonColor
                 });
                 // Сначала скрываем, пока нет файлов
                 tg.MainButton.hide();
