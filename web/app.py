@@ -375,7 +375,19 @@ def complete_upload():
                         with open(chunk_path, 'rb') as chunk_file:
                             shutil.copyfileobj(chunk_file, outfile)
                 
-                logger.info(f"File assembled: {filename}, size: {os.path.getsize(temp_path) / 1024 / 1024:.2f} MB")
+                # Проверка размера собранного файла против метаданных
+                actual_size = os.path.getsize(temp_path)
+                expected_size = metadata.get('file_size')
+                if expected_size is not None and actual_size != expected_size:
+                    error_msg = (
+                        f"Несоответствие размера файла: ожидалось {expected_size} байт, "
+                        f"получено {actual_size} байт. Файл может быть поврежден или неполон."
+                    )
+                    logger.error(f"File size mismatch for {filename}: {error_msg}")
+                    failed_files.append({"name": filename, "error": error_msg})
+                    continue
+                
+                logger.info(f"File assembled: {filename}, size: {actual_size / 1024 / 1024:.2f} MB")
                 
                 try:
                     file_data = parser.parse_file(temp_path)
