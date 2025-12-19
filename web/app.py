@@ -413,7 +413,13 @@ def complete_upload():
             
             # Проверка целостности: все ли чанки на месте?
             total_chunks = metadata.get('total_chunks')
-            if total_chunks is not None and len(chunk_files) != total_chunks:
+            if total_chunks is None:
+                error_msg = "Метаданные повреждены: отсутствует информация о количестве частей."
+                logger.error(f"{error_msg} (upload_id: {upload_id})")
+                failed_files.append({"name": filename, "error": error_msg})
+                continue
+
+            if len(chunk_files) != total_chunks:
                 error_msg = f"Файл загружен не полностью: получено {len(chunk_files)} частей из {total_chunks}."
                 logger.error(f"{error_msg} для {filename} (upload_id: {upload_id})")
                 failed_files.append({"name": filename, "error": error_msg})
