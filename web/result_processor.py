@@ -161,10 +161,11 @@ def send_completion_message(user_id, total_files_processed, total_files_uploaded
             parse_mode="Markdown"
         )
     elif failed_count > 0:
-        # Есть ошибки, но они еще не были отправлены - отправляем сообщение с упоминанием ошибок
+        # Есть ошибки, но они не были отправлены (например, из-за отсутствия BOT_TOKEN или user_id)
+        # Не упоминаем "сообщение выше", так как его нет
         sender.send_message(
             user_id,
-            f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}. Ошибки см. в сообщении выше.",
+            f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}. Некоторые файлы не удалось обработать.",
             parse_mode="Markdown"
         )
     else:
