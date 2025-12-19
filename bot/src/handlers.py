@@ -265,7 +265,9 @@ class BotHandlers:
             # Используем aiohttp для асинхронной загрузки файла
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 form_data = aiohttp.FormData()
-                form_data.add_field('files', file_content, filename=message.document.file_name, content_type='application/json')
+                # Не указываем content_type - aiohttp/Flask автоматически определят тип файла
+                # Указание 'application/json' мешает Flask распознать поле как файл в request.files
+                form_data.add_field('files', file_content, filename=message.document.file_name)
                 form_data.add_field('user_id', str(user_id))
                 
                 async with session.post(api_url, data=form_data) as response:
