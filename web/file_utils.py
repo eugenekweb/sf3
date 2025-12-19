@@ -92,41 +92,19 @@ def validate_upload_id(upload_id):
 
 def sanitize_filename(chat_name, default="chat"):
     """
-    Санитизация имени чата для безопасного имени файла
+    Простая очистка имени чата: заменяем любые недопустимые символы underscore'ом
 
     Args:
         chat_name: Исходное имя чата
-        default: Значение по умолчанию, если имя не удалось обработать
+        default: fallback, если после очистки имя пустое
 
     Returns:
         str: Безопасное имя файла
     """
-    # Проверяем на пустое значение и известные значения "неизвестного чата"
-    # (поддерживаем оба варианта для обратной совместимости)
-    if not chat_name or chat_name in ("Unknown", "Неизвестный чат"):
+    if not chat_name or chat_name.strip() == "":
         return default
 
-    # Транслитерируем кириллицу в латиницу
-    transliterated = _transliterate_ru(chat_name)
-    
-    # Пробуем secure_filename
-    safe_chat_name = secure_filename(transliterated).replace(" ", "_").strip("_")
+    cleaned = re.sub(r"[^0-9A-Za-z_\-]+", "_", chat_name.strip())
+    cleaned = cleaned.strip("_-")
 
-    # Проверяем, что результат не пустой и содержит хотя бы одну букву или цифру
-    # (не состоит только из дефисов/подчеркиваний)
-    if not safe_chat_name or not any(c.isalnum() for c in safe_chat_name):
-        # Используем транслитерированное имя с очисткой
-        safe_chat_name = (
-            "".join(c for c in transliterated if c.isalnum() or c in (" ", "-", "_"))
-            .strip()
-            .replace(" ", "_")
-        )
-        
-        # Удаляем дефисы и подчеркивания с начала и конца
-        safe_chat_name = safe_chat_name.strip("-").strip("_")
-        
-        # Проверяем, что результат не пустой и содержит хотя бы одну букву или цифру
-        if not safe_chat_name or not any(c.isalnum() for c in safe_chat_name):
-            safe_chat_name = default
-
-    return safe_chat_name
+    return cleaned if cleaned else default
