@@ -20,10 +20,11 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
         combine_results: Объединить результаты в один файл
     
     Returns:
-        dict: Результат обработки
+        dict: Результат обработки. При ошибке содержит ключ "error", при успехе - "groups_count"
     """
     if not config.BOT_TOKEN:
-        return {"error": "BOT_TOKEN not configured"}, 500
+        logger.error("BOT_TOKEN not configured")
+        return {"error": "BOT_TOKEN not configured", "groups_count": 0}
     
     sender = TelegramSender(config.BOT_TOKEN)
     excel_gen = ExcelGenerator()

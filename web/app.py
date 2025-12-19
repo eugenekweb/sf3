@@ -136,6 +136,10 @@ def upload():
         
         # Обработка и отправка результатов
         result = process_and_send_results(file_data_list, user_id, combine_results)
+        if "error" in result:
+            logger.error(f"Error in process_and_send_results: {result['error']}")
+            return jsonify(result), 500
+        
         groups_count = result.get("groups_count", 0)
         
         # Отправка сообщения о завершении
@@ -361,6 +365,10 @@ def complete_upload():
         
         # Обработка и отправка результатов
         result = process_and_send_results(file_data_list, user_id, combine_results)
+        if "error" in result:
+            logger.error(f"Error in process_and_send_results: {result['error']}")
+            return jsonify({"success": False, **result}), 500
+        
         groups_count = result.get("groups_count", 0)
         
         # Отправка сообщения о завершении
