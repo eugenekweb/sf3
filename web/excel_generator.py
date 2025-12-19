@@ -182,6 +182,11 @@ class ExcelGenerator:
         Returns:
             str: Текстовое представление списка в формате HTML
         """
+        # Защита от None значений
+        participants = participants or []
+        mentions = mentions or []
+        channels = channels or []
+
         # Экранируем chat_name сразу в начале функции для использования везде
         chat_name_escaped = html.escape(chat_name)
         
