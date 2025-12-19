@@ -57,7 +57,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
         # Проверяем порог для Excel/текст (как в необъединенном пути)
         if total_participants < config.EXCEL_THRESHOLD:
             text_list = excel_gen.generate_text_list(participants, mentions, channels, "Combined result")
-            sender.send_message(user_id, text_list, parse_mode="Markdown")
+            sender.send_message(user_id, text_list, parse_mode="HTML")
             time.sleep(0.5)
         else:
             excel_file = excel_gen.generate(participants, mentions, channels, "Combined result")
@@ -106,7 +106,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             
             if total_participants < config.EXCEL_THRESHOLD:
                 text_list = excel_gen.generate_text_list(participants, mentions, channels, chat_name)
-                sender.send_message(user_id, text_list, parse_mode="Markdown")
+                sender.send_message(user_id, text_list, parse_mode="HTML")
                 time.sleep(0.5)
             else:
                 excel_file = excel_gen.generate(participants, mentions, channels, chat_name)

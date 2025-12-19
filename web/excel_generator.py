@@ -177,51 +177,61 @@ class ExcelGenerator:
     ) -> str:
         """
         Генерация текстового списка для отправки в чат (< EXCEL_THRESHOLD участников)
-        Формат: имя (ИД) в code блоке для копирования (markdown с тройными кавычками)
+        Формат: имя (ИД) в code блоке для копирования (HTML форматирование)
 
         Returns:
-            str: Текстовое представление списка
+            str: Текстовое представление списка в формате HTML
         """
-        text = f"📊 *Результаты анализа чата: {chat_name}*\n\n"
+        # Используем HTML для надежного форматирования в Telegram
+        text = f"📊 <b>Результаты анализа чата: {chat_name}</b>\n\n"
 
         if participants:
-            text += f"👤 *Участники ({len(participants)}):*\n"
+            text += f"👤 <b>Участники ({len(participants)}):</b>\n"
             # Формируем список без нумерации
             participants_list = []
             for p in participants:
                 name = p.get("name", "Unknown")
                 from_id = p.get("from_id", "N/A")
-                participants_list.append(f"{name} ({from_id})")
-            # Оборачиваем в markdown code блок с тройными кавычками
-            text += "```\n" + "\n".join(participants_list) + "\n```\n\n"
+                # Экранируем HTML спецсимволы
+                name_escaped = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                from_id_escaped = str(from_id).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                participants_list.append(f"{name_escaped} ({from_id_escaped})")
+            # Оборачиваем в HTML pre/code блок для моноширинного шрифта
+            text += "<pre><code>" + "\n".join(participants_list) + "</code></pre>\n\n"
 
         # Показываем только упоминания с username
         mentions_with_username = [m for m in mentions if m.get("username")]
         if mentions_with_username:
-            text += f"👥 *Упоминания ({len(mentions_with_username)}):*\n"
+            text += f"👥 <b>Упоминания ({len(mentions_with_username)}):</b>\n"
             # Формируем список без нумерации
             mentions_list = []
             for m in mentions_with_username:
                 username = m.get("username", "")
-                mentions_list.append(f"@{username}")
-            # Оборачиваем в markdown code блок с тройными кавычками
-            text += "```\n" + "\n".join(mentions_list) + "\n```\n\n"
+                # Экранируем HTML спецсимволы
+                username_escaped = username.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                mentions_list.append(f"@{username_escaped}")
+            # Оборачиваем в HTML pre/code блок
+            text += "<pre><code>" + "\n".join(mentions_list) + "</code></pre>\n\n"
 
         # Показываем каналы, если они есть
         if channels:
-            text += f"📢 *Каналы ({len(channels)}):*\n"
+            text += f"📢 <b>Каналы ({len(channels)}):</b>\n"
             # Формируем список без нумерации
             channels_list = []
             for ch in channels:
                 name = ch.get("name", "Unknown")
                 channel_id = ch.get("channel_id", "N/A")
-                channels_list.append(f"{name} ({channel_id})")
-            # Оборачиваем в markdown code блок с тройными кавычками
-            text += "```\n" + "\n".join(channels_list) + "\n```\n\n"
+                # Экранируем HTML спецсимволы
+                name_escaped = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                channel_id_escaped = str(channel_id).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                channels_list.append(f"{name_escaped} ({channel_id_escaped})")
+            # Оборачиваем в HTML pre/code блок
+            text += "<pre><code>" + "\n".join(channels_list) + "</code></pre>\n\n"
 
         # Добавляем информацию об обработке в конец
-        text += "✅ *Обработка завершена!*\n\n"
-        text += f"💬 *Чат:* {chat_name}\n"
+        chat_name_escaped = chat_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        text += "✅ <b>Обработка завершена!</b>\n\n"
+        text += f"💬 <b>Чат:</b> {chat_name_escaped}\n"
         text += f"👤 Участников: {len(participants)}\n"
         text += f"👥 Упоминаний: {len(mentions_with_username)}"
         if channels:
