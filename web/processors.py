@@ -160,8 +160,10 @@ class ChatParser:
         """
         Извлечение каналов из сообщений
         Кейс 4: from + from_id (содержит "channel") + непустой text
+        Кейс 5: forwarded_from + forwarded_from_id (содержит "channel") - для пересланных сообщений
         """
         for msg in messages:
+            # Кейс 4: Обычные сообщения от каналов
             from_id = msg.get("from_id")
             from_name = msg.get("from")
             text = msg.get("text", "")
@@ -198,6 +200,26 @@ class ChatParser:
                             "channel_id": from_id,
                             "name": from_name,
                         }
+            
+            # Кейс 5: Пересланные сообщения из каналов
+            # Для пересланных сообщений проверка непустого text необязательна,
+            # так как факт пересылки уже указывает на канал
+            forwarded_from_id = msg.get("forwarded_from_id")
+            forwarded_from_name = msg.get("forwarded_from")
+            
+            if (
+                forwarded_from_id
+                and forwarded_from_name
+                and isinstance(forwarded_from_id, str)
+                and "channel" in forwarded_from_id.lower()
+            ):
+                # Сохраняем канал из пересланного сообщения
+                # Дубликаты обрабатываются проверкой if forwarded_from_id not in self.channels
+                if forwarded_from_id not in self.channels:
+                    self.channels[forwarded_from_id] = {
+                        "channel_id": forwarded_from_id,
+                        "name": forwarded_from_name,
+                    }
 
 
     def process_messages(self, messages: List[Dict]) -> None:
