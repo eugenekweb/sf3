@@ -163,7 +163,14 @@ def send_completion_message(user_id, total_files_processed, total_files_uploaded
             f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}.",
             parse_mode="Markdown"
         )
-    # Если error_message_sent=True и failed_count > 0, не отправляем дублирующее сообщение
+    elif failed_count > 0 and error_message_sent:
+        # Отправляем сообщение о завершении даже если ошибки уже были отправлены ранее
+        # Это обеспечивает обратную связь пользователю о количестве успешно обработанных файлов
+        sender.send_message(
+            user_id,
+            f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}. Ошибки см. в сообщении выше.",
+            parse_mode="Markdown"
+        )
 
 
 def send_keyboard_after_processing(user_id):
