@@ -273,17 +273,19 @@ def upload_chunk():
         chunk_path = os.path.join(chunks_dir, f'chunk_{chunk_index}.part')
         chunk_file.save(chunk_path)
         
-        # Сохраняем метаданные файла (только при первом чанке)
-        if chunk_index == 0:
+        # Сохраняем метаданные файла при первом запросе (любом чанке)
+        # Это гарантирует создание metadata.json даже если чанки приходят не по порядку
+        metadata_path = os.path.join(chunks_dir, 'metadata.json')
+        if not os.path.exists(metadata_path):
             metadata = {
                 'filename': filename,
                 'file_size': file_size,
                 'total_chunks': total_chunks,
                 'user_id': user_id
             }
-            metadata_path = os.path.join(chunks_dir, 'metadata.json')
             with open(metadata_path, 'w', encoding='utf-8') as f:
                 json.dump(metadata, f)
+            logger.info(f"Metadata created for upload_id {upload_id} on chunk {chunk_index}")
         
         logger.info(f"Chunk {chunk_index + 1}/{total_chunks} saved for {filename} (upload_id: {upload_id})")
         

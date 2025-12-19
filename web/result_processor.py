@@ -1,6 +1,7 @@
 """Утилиты для обработки и отправки результатов"""
 import logging
 import time
+from datetime import datetime
 from processors import ChatParser, FileGrouper
 from excel_generator import ExcelGenerator
 from telegram_sender import TelegramSender
@@ -61,7 +62,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             time.sleep(0.5)
         else:
             excel_file = excel_gen.generate(participants, mentions, channels, "Combined result")
-            filename = f"combined-export-{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
+            filename = f"combined-export-{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             caption = (
                 f"📊 Сводный экспорт участников\n\n"
                 f"✅ Обработка завершена!\n\n"
@@ -116,7 +117,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
                 # Обрабатываем имя чата для безопасного имени файла
                 safe_chat_name = sanitize_filename(chat_name, default="chat")
                 # Всегда добавляем дату в имя файла
-                filename = f"{safe_chat_name}_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
+                filename = f"{safe_chat_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                 # mentions_with_username и mentions_count уже определены выше (строка 94-95)
                 caption = (
                     f"📊 Экспорт участников чата: {chat_name}\n\n"
