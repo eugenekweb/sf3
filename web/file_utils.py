@@ -92,8 +92,9 @@ def validate_upload_id(upload_id):
 
 def sanitize_filename(chat_name, default="chat"):
     """
-    Простая очистка имени чата: заменяем любые недопустимые символы подчеркиванием.
-    Оставляем буквы (включая кириллицу), цифры, пробелы, дефисы и подчеркивания.
+    Максимально простая очистка имени чата: заменяем только символы, 
+    которые запрещены в именах файлов (Windows/Linux).
+    Кириллица, пробелы и дефисы сохраняются.
 
     Args:
         chat_name: Исходное имя чата
@@ -102,20 +103,24 @@ def sanitize_filename(chat_name, default="chat"):
     Returns:
         str: Безопасное имя файла
     """
-    if not chat_name or chat_name.strip() == "" or chat_name in ["Unknown", "Неизвестный чат"]:
+    if not chat_name or not isinstance(chat_name, str):
+        return default
+    
+    chat_name = chat_name.strip()
+    if chat_name in ["", "Unknown", "Неизвестный чат"]:
         return default
 
-    # Заменяем все, что не является буквой, цифрой, подчеркиванием, дефисом или пробелом, на '_'
-    # Регулярное выражение \w в Python 3 по умолчанию поддерживает Unicode
-    cleaned = re.sub(r"[^\w\s\-]+", "_", chat_name.strip())
+    # Заменяем только реально запрещенные символы: \ / : * ? " < > |
+    # Эти символы нельзя использовать в именах файлов в Windows и Linux
+    cleaned = re.sub(r'[\\/*?:"<>|]', "_", chat_name)
     
-    # Заменяем пробелы на подчеркивания для имен файлов
-    cleaned = cleaned.replace(" ", "_")
+    # Убираем управляющие символы (ASCII 0-31)
+    cleaned = "".join(c for c in cleaned if ord(c) >= 32)
     
-    # Убираем повторяющиеся подчеркивания
+    # Схлопываем множественные подчеркивания
     cleaned = re.sub(r"_+", "_", cleaned)
     
-    # Убираем подчеркивания и дефисы по краям
-    cleaned = cleaned.strip("_-")
-
-    return cleaned if cleaned else default
+    # Обрезаем пробелы по краям
+    result = cleaned.strip()
+    
+    return result if result else default

@@ -153,10 +153,9 @@ class ExcelGenerator:
         if participants:
             self.add_participants_sheet(participants, chat_name)
 
-        # Фильтруем упоминания с username и передаем отфильтрованный список
-        mentions_with_username = [m for m in mentions if m.get("username")]
-        if mentions_with_username:
-            self.add_mentions_sheet(mentions_with_username, chat_name)
+        # Передаем список упоминаний как есть, метод add_mentions_sheet сам его отфильтрует
+        if mentions:
+            self.add_mentions_sheet(mentions, chat_name)
 
         # Добавляем каналы, если они есть
         if channels:
@@ -177,7 +176,7 @@ class ExcelGenerator:
         chat_name: str = "Unknown",
     ) -> str:
         """
-        Генерация текстового списка для отправки в чат (< EXCEL_THRESHOLD участников)
+        Генерация текстового списка для отправки в чат (>= 50 участников - Excel, < 50 - текст)
         Формат: имя (ИД) в code блоке для копирования (HTML форматирование)
 
         Returns:

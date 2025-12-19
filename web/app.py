@@ -285,7 +285,7 @@ def upload_chunk():
         chunk_file.save(chunk_path)
         
         # Сохраняем метаданные файла при первом запросе (любом чанке)
-        # Это гарантирует создание metadata.json даже если чанки приходят не по порядку
+        # Используем атомарную проверку и создание файла для предотвращения Race Condition
         metadata_path = os.path.join(chunks_dir, 'metadata.json')
         if not os.path.exists(metadata_path):
             metadata = {
@@ -294,9 +294,17 @@ def upload_chunk():
                 'total_chunks': total_chunks,
                 'user_id': user_id
             }
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f)
-            logger.info(f"Metadata created for upload_id {upload_id} on chunk {chunk_index}")
+            try:
+                # Пытаемся создать файл атомарно. Если он уже существует, os.open выбросит FileExistsError
+                fd = os.open(metadata_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f)
+                logger.info(f"Metadata created for upload_id {upload_id} on chunk {chunk_index}")
+            except FileExistsError:
+                # Метаданные уже созданы другим параллельным запросом, это нормально
+                logger.debug(f"Metadata already exists for upload_id {upload_id}")
+            except Exception as e:
+                logger.error(f"Error creating metadata for {upload_id}: {e}")
         
         logger.info(f"Chunk {chunk_index + 1}/{total_chunks} saved for {filename} (upload_id: {upload_id})")
         
@@ -394,8 +402,12 @@ def complete_upload():
             chunk_files = []
             for f in os.listdir(chunks_dir):
                 if f.startswith('chunk_') and f.endswith('.part'):
-                    chunk_index = int(f.replace('chunk_', '').replace('.part', ''))
-                    chunk_files.append((chunk_index, os.path.join(chunks_dir, f)))
+                    try:
+                        chunk_index = int(f.replace('chunk_', '').replace('.part', ''))
+                        chunk_files.append((chunk_index, os.path.join(chunks_dir, f)))
+                    except ValueError:
+                        logger.warning(f"Skipping malformed chunk file: {f} in {chunks_dir}")
+                        continue
             
             chunk_files.sort(key=lambda x: x[0])
             

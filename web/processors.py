@@ -290,7 +290,13 @@ class FileGrouper:
                 final_name = files[0].get("name") or "Unknown"
             
             final_key = (final_name, key[1], key[2])
-            result[final_key] = files
+            
+            # Если такой финальный ключ уже есть (например, из-за совпадения имен),
+            # объединяем списки файлов, а не перезаписываем
+            if final_key in result:
+                result[final_key].extend(files)
+            else:
+                result[final_key] = files
 
         return result
 

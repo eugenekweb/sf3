@@ -710,18 +710,8 @@
             const hex = Array.from(array, v => v.toString(16).padStart(8, '0')).join('');
             return 'upload_' + hex;
         }
-        // Если криптографически стойкий генератор недоступен, используем более безопасный фолбэк
-        // с предупреждением в консоль
+        // Если криптографически стойкий генератор недоступен, используем фолбэк
         console.warn('Secure random number generation is not available; using fallback method.');
-        // Используем комбинацию timestamp и случайных байт из crypto.getRandomValues если доступен
-        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
-            const array = new Uint8Array(16);
-            window.crypto.getRandomValues(array);
-            const hex = Array.from(array, v => v.toString(16).padStart(2, '0')).join('');
-            return 'upload_' + Date.now().toString(36) + '_' + hex;
-        }
-        // Последний фолбэк для очень старых браузеров (менее безопасный)
-        console.error('Using insecure random number generation fallback. Consider updating your browser.');
         return 'upload_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
     }
 

@@ -125,11 +125,19 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
                 time.sleep(0.5)
             else:
                 excel_file = excel_gen.generate(participants, mentions, channels, chat_name)
-                # Обрабатываем имя чата для безопасного имени файла
+                
+                # 1. Очищаем только имя чата (кириллица теперь сохраняется)
                 safe_chat_name = sanitize_filename(chat_name, default="chat")
-                # Всегда добавляем дату в имя файла
-                filename = f"{safe_chat_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                # mentions_with_username и mentions_count уже определены выше (строка 94-95)
+                
+                # 2. Формируем метку времени (теперь через f-строку отдельно для надежности)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                # 3. Собираем финальное имя: префикс + очищенное имя + время + расширение
+                filename = f"chat_export_{safe_chat_name}_{timestamp}.xlsx"
+                
+                logger.info(f"Processing chat finished. Filename generated: {filename}")
+                
+                # mentions_with_username и mentions_count уже определены выше (строка 106-107)
                 caption = (
                     f"📊 Экспорт участников чата: {chat_name}\n\n"
                     f"✅ Обработка завершена!\n\n"
