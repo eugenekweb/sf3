@@ -58,7 +58,7 @@ class ChatParser:
                 )
 
             return {
-                "name": data.get("name", "Неизвестный чат"),
+                "name": data.get("name", "Unknown"),
                 "type": data.get("type", "unknown"),
                 "id": data.get("id"),
                 "messages": data.get("messages", []),
@@ -260,12 +260,12 @@ class FileGrouper:
             final_name = None
             for file_data in files:
                 name = file_data.get("name")
-                if name and name != "Неизвестный чат":
+                if name and name != "Unknown":
                     final_name = name
                     break
             
             if not final_name and files:
-                final_name = files[0].get("name") or "Неизвестный чат"
+                final_name = files[0].get("name") or "Unknown"
             
             final_key = (final_name, key[1], key[2])
             result[final_key] = files
