@@ -101,6 +101,38 @@ class ExcelGenerator:
 
         logger.info(f"Added {row_idx - 5} mentions to Excel")
 
+    def add_channels_sheet(self, channels: List[Dict], chat_name: str = "Unknown"):
+        """Добавление листа с каналами"""
+        headers = ["Название", "ИД"]
+
+        ws = self.create_sheet("Каналы", headers)
+
+        # Заголовки на первых строках
+        ws.cell(row=1, column=1, value=f"Файл истории чата: {chat_name}")
+        ws.cell(row=2, column=1, value=f"Дата экспорта: {self.export_date}")
+        ws.cell(row=3, column=1, value="На этой вкладке: Каналы")
+
+        # Заголовки колонок на строке 4
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=4, column=col_idx, value=header)
+            header_fill = PatternFill(
+                start_color="4472C4", end_color="4472C4", fill_type="solid"
+            )
+            header_font = Font(bold=True, color="FFFFFF")
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        # Данные каналов (начиная со строки 5)
+        for row_idx, channel in enumerate(channels, 5):
+            name = channel.get("name", "Unknown")
+            channel_id = channel.get("channel_id", "N/A")
+
+            ws.cell(row=row_idx, column=1, value=name)
+            ws.cell(row=row_idx, column=2, value=channel_id)
+
+        logger.info(f"Added {len(channels)} channels to Excel")
+
     def generate(
         self,
         participants: List[Dict],
@@ -116,7 +148,7 @@ class ExcelGenerator:
         """
         self.create_workbook()
 
-        # Добавляем только 2 вкладки: Участники и Упоминания
+        # Добавляем вкладки: Участники, Упоминания и Каналы
         if participants:
             self.add_participants_sheet(participants, chat_name)
 
@@ -124,6 +156,10 @@ class ExcelGenerator:
         mentions_with_username = [m for m in mentions if m.get("username")]
         if mentions_with_username:
             self.add_mentions_sheet(mentions_with_username, chat_name)
+
+        # Добавляем каналы, если они есть
+        if channels:
+            self.add_channels_sheet(channels, chat_name)
 
         # Сохраняем в память
         output = BytesIO()
@@ -171,10 +207,24 @@ class ExcelGenerator:
             # Оборачиваем в markdown code блок с тройными кавычками
             text += "```\n" + "\n".join(mentions_list) + "\n```\n\n"
 
+        # Показываем каналы, если они есть
+        if channels:
+            text += f"📢 *Каналы ({len(channels)}):*\n"
+            # Формируем список без нумерации
+            channels_list = []
+            for ch in channels:
+                name = ch.get("name", "Unknown")
+                channel_id = ch.get("channel_id", "N/A")
+                channels_list.append(f"{name} ({channel_id})")
+            # Оборачиваем в markdown code блок с тройными кавычками
+            text += "```\n" + "\n".join(channels_list) + "\n```\n\n"
+
         # Добавляем информацию об обработке в конец
         text += "✅ *Обработка завершена!*\n\n"
         text += f"💬 *Чат:* {chat_name}\n"
         text += f"👤 Участников: {len(participants)}\n"
         text += f"👥 Упоминаний: {len(mentions_with_username)}"
+        if channels:
+            text += f"\n📢 Каналов: {len(channels)}"
 
         return text

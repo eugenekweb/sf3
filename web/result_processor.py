@@ -43,6 +43,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
         total_participants = len(participants)
         mentions_with_username = [m for m in mentions if m.get('username')]
         mentions_count = len(mentions_with_username)
+        channels_count = len(channels)
         
         excel_file = excel_gen.generate(participants, mentions, channels, "Combined result")
         filename = f"combined-export-{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
@@ -53,6 +54,8 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             f"👤 Участников: {total_participants}\n"
             f"👥 Упоминаний: {mentions_count}"
         )
+        if channels_count > 0:
+            caption += f"\n📢 Каналов: {channels_count}"
         sender.send_document(user_id, excel_file, filename, caption=caption)
         time.sleep(0.5)
         groups_count = 1
@@ -73,8 +76,9 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             mentions = results['mentions']
             channels = results['channels']
             total_participants = len(participants)
+            channels_count = len(channels)
             
-            logger.info(f"Chat {chat_name}: {total_participants} participants, {len(mentions)} mentions, {len(channels)} channels")
+            logger.info(f"Chat {chat_name}: {total_participants} participants, {len(mentions)} mentions, {channels_count} channels")
             
             if total_participants == 0:
                 sender.send_message(
@@ -104,6 +108,8 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
                     f"👤 Участников: {total_participants}\n"
                     f"👥 Упоминаний: {mentions_count}"
                 )
+                if channels_count > 0:
+                    caption += f"\n📢 Каналов: {channels_count}"
                 sender.send_document(user_id, excel_file, filename, caption=caption)
                 time.sleep(0.5)
     
