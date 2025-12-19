@@ -61,13 +61,15 @@ fi
 # Обновляем токен в .env
 echo -e "${YELLOW}📝 Обновляю TUNA_TOKEN в $ENV_FILE${NC}"
 if grep -q "^TUNA_TOKEN=" "$ENV_FILE"; then
+    # Экранируем специальные символы для sed (|, &, \)
+    ESCAPED_TOKEN=$(echo "$TUNA_TOKEN" | sed 's/|/\\|/g; s/&/\\&/g; s/\\/\\\\/g')
     # Обновляем существующий токен
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        sed -i '' "s|^TUNA_TOKEN=.*|TUNA_TOKEN=$TUNA_TOKEN|" "$ENV_FILE"
+        sed -i '' "s|^TUNA_TOKEN=.*|TUNA_TOKEN=$ESCAPED_TOKEN|" "$ENV_FILE"
     else
         # Linux/Git Bash
-        sed -i "s|^TUNA_TOKEN=.*|TUNA_TOKEN=$TUNA_TOKEN|" "$ENV_FILE"
+        sed -i "s|^TUNA_TOKEN=.*|TUNA_TOKEN=$ESCAPED_TOKEN|" "$ENV_FILE"
     fi
 else
     # Добавляем новый токен

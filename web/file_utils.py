@@ -112,8 +112,9 @@ def sanitize_filename(chat_name, default="chat"):
     # Пробуем secure_filename
     safe_chat_name = secure_filename(transliterated).replace(" ", "_").strip("_")
 
-    # Проверяем, что результат не пустой и не состоит только из дефисов/подчеркиваний
-    if not safe_chat_name or safe_chat_name.strip("-").strip("_") == "":
+    # Проверяем, что результат не пустой и содержит хотя бы одну букву или цифру
+    # (не состоит только из дефисов/подчеркиваний)
+    if not safe_chat_name or not any(c.isalnum() for c in safe_chat_name):
         # Используем транслитерированное имя с очисткой
         safe_chat_name = (
             "".join(c for c in transliterated if c.isalnum() or c in (" ", "-", "_"))
@@ -124,8 +125,8 @@ def sanitize_filename(chat_name, default="chat"):
         # Удаляем дефисы и подчеркивания с начала и конца
         safe_chat_name = safe_chat_name.strip("-").strip("_")
         
-        # Проверяем, что результат не пустой и не состоит только из дефисов/подчеркиваний
-        if not safe_chat_name or safe_chat_name.strip("-").strip("_") == "":
+        # Проверяем, что результат не пустой и содержит хотя бы одну букву или цифру
+        if not safe_chat_name or not any(c.isalnum() for c in safe_chat_name):
             safe_chat_name = default
 
     return safe_chat_name

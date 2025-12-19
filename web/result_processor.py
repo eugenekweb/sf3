@@ -76,7 +76,20 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             time.sleep(0.5)
         groups_count = 1
     else:
-        groups = FileGrouper.group_files(file_data_list)
+        # Дедупликация файлов по filepath перед группировкой
+        # (защита от повторной обработки одного и того же файла)
+        seen_filepaths = set()
+        unique_file_data_list = []
+        for file_data in file_data_list:
+            filepath = file_data.get('filepath')
+            if filepath and filepath not in seen_filepaths:
+                seen_filepaths.add(filepath)
+                unique_file_data_list.append(file_data)
+            elif not filepath:
+                # Если filepath отсутствует, все равно добавляем (может быть из другого источника)
+                unique_file_data_list.append(file_data)
+        
+        groups = FileGrouper.group_files(unique_file_data_list)
         groups_count = len(groups)
         
         for chat_key, chat_files in groups.items():
