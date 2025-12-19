@@ -54,19 +54,25 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             )
             return {"groups_count": 0}
         
-        excel_file = excel_gen.generate(participants, mentions, channels, "Combined result")
-        filename = f"combined-export-{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
-        caption = (
-            f"📊 Сводный экспорт участников\n\n"
-            f"✅ Обработка завершена!\n\n"
-            f"💬 Файлы: {len(file_data_list)}\n"
-            f"👤 Участников: {total_participants}\n"
-            f"👥 Упоминаний: {mentions_count}"
-        )
-        if channels_count > 0:
-            caption += f"\n📢 Каналов: {channels_count}"
-        sender.send_document(user_id, excel_file, filename, caption=caption)
-        time.sleep(0.5)
+        # Проверяем порог для Excel/текст (как в необъединенном пути)
+        if total_participants < config.EXCEL_THRESHOLD:
+            text_list = excel_gen.generate_text_list(participants, mentions, channels, "Combined result")
+            sender.send_message(user_id, text_list, parse_mode="Markdown")
+            time.sleep(0.5)
+        else:
+            excel_file = excel_gen.generate(participants, mentions, channels, "Combined result")
+            filename = f"combined-export-{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
+            caption = (
+                f"📊 Сводный экспорт участников\n\n"
+                f"✅ Обработка завершена!\n\n"
+                f"💬 Файлы: {len(file_data_list)}\n"
+                f"👤 Участников: {total_participants}\n"
+                f"👥 Упоминаний: {mentions_count}"
+            )
+            if channels_count > 0:
+                caption += f"\n📢 Каналов: {channels_count}"
+            sender.send_document(user_id, excel_file, filename, caption=caption)
+            time.sleep(0.5)
         groups_count = 1
     else:
         groups = FileGrouper.group_files(file_data_list)
