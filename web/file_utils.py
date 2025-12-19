@@ -34,6 +34,32 @@ def validate_user_id(user_id_str, debug_mode=False):
         return None, jsonify({"error": "Invalid user_id format"}), 400
 
 
+def _transliterate_ru(text):
+    """
+    Простая транслитерация русских букв в латиницу
+    
+    Args:
+        text: Текст с кириллицей
+    
+    Returns:
+        str: Текст с транслитерированными русскими буквами
+    """
+    ru_en = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+        'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+        'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+        # Заглавные
+        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo',
+        'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M',
+        'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
+        'Ф': 'F', 'Х': 'H', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch',
+        'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya',
+    }
+    return ''.join(ru_en.get(c, c) for c in text)
+
+
 def sanitize_filename(chat_name, default="chat"):
     """
     Санитизация имени чата для безопасного имени файла
@@ -50,13 +76,16 @@ def sanitize_filename(chat_name, default="chat"):
     if not chat_name or chat_name in ("Unknown", "Неизвестный чат"):
         return default
 
+    # Транслитерируем кириллицу в латиницу
+    transliterated = _transliterate_ru(chat_name)
+    
     # Пробуем secure_filename
-    safe_chat_name = secure_filename(chat_name).replace(" ", "_").strip("_")
+    safe_chat_name = secure_filename(transliterated).replace(" ", "_").strip("_")
 
-    # Если secure_filename вернул пустую строку, используем исходное имя с очисткой
+    # Если secure_filename вернул пустую строку, используем транслитерированное имя с очисткой
     if not safe_chat_name:
         safe_chat_name = (
-            "".join(c for c in chat_name if c.isalnum() or c in (" ", "-", "_"))
+            "".join(c for c in transliterated if c.isalnum() or c in (" ", "-", "_"))
             .strip()
             .replace(" ", "_")
         )
