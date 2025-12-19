@@ -182,8 +182,11 @@ class ExcelGenerator:
         Returns:
             str: Текстовое представление списка в формате HTML
         """
+        # Экранируем chat_name сразу в начале функции для использования везде
+        chat_name_escaped = chat_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        
         # Используем HTML для надежного форматирования в Telegram
-        text = f"📊 <b>Результаты анализа чата: {chat_name}</b>\n\n"
+        text = f"📊 <b>Результаты анализа чата: {chat_name_escaped}</b>\n\n"
 
         if participants:
             text += f"👤 <b>Участники ({len(participants)}):</b>\n"
@@ -229,7 +232,7 @@ class ExcelGenerator:
             text += "<pre><code>" + "\n".join(channels_list) + "</code></pre>\n\n"
 
         # Добавляем информацию об обработке в конец
-        chat_name_escaped = chat_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        # chat_name_escaped уже определен выше
         text += "✅ <b>Обработка завершена!</b>\n\n"
         text += f"💬 <b>Чат:</b> {chat_name_escaped}\n"
         text += f"👤 Участников: {len(participants)}\n"

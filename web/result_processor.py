@@ -151,26 +151,27 @@ def send_completion_message(user_id, total_files_processed, total_files_uploaded
     
     # Отправляем сообщение о завершении для любого количества файлов
     time.sleep(0.5)
-    if failed_count > 0 and not error_message_sent:
-        # Отправляем сообщение об ошибках только если оно еще не было отправлено
+    
+    # Переструктурируем логику: сначала проверяем error_message_sent, затем failed_count
+    if error_message_sent:
+        # Ошибки уже были отправлены ранее - отправляем сообщение о завершении с упоминанием ошибок
         sender.send_message(
             user_id,
             f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}. Ошибки см. в сообщении выше.",
             parse_mode="Markdown"
         )
-    elif failed_count == 0:
-        # Отправляем сообщение о завершении только если нет ошибок
+    elif failed_count > 0:
+        # Есть ошибки, но они еще не были отправлены - отправляем сообщение с упоминанием ошибок
+        sender.send_message(
+            user_id,
+            f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}. Ошибки см. в сообщении выше.",
+            parse_mode="Markdown"
+        )
+    else:
+        # Нет ошибок - отправляем обычное сообщение о завершении
         sender.send_message(
             user_id,
             f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}.",
-            parse_mode="Markdown"
-        )
-    elif failed_count > 0 and error_message_sent:
-        # Отправляем сообщение о завершении даже если ошибки уже были отправлены ранее
-        # Это обеспечивает обратную связь пользователю о количестве успешно обработанных файлов
-        sender.send_message(
-            user_id,
-            f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}. Ошибки см. в сообщении выше.",
             parse_mode="Markdown"
         )
 
