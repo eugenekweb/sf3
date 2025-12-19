@@ -253,17 +253,24 @@ class BotHandlers:
             # Используем внутренний Docker URL
             api_url = os.getenv("WEB_API_URL", "http://web:5000/api/upload")
 
+            # Используем таймаут из конфигурации (по умолчанию 5 минут)
+            from src.utils import Config as BotConfig
+
+            timeout = aiohttp.ClientTimeout(total=BotConfig.UPLOAD_TIMEOUT)
+            
+            # Читаем файл в память для передачи через aiohttp
             with open(temp_file.name, "rb") as f:
-                files = {"files": (message.document.file_name, f, "application/json")}
-                data = {"user_id": str(user_id)}
-
-                # Используем таймаут из конфигурации (по умолчанию 5 минут)
-                from src.utils import Config as BotConfig
-
-                timeout = BotConfig.UPLOAD_TIMEOUT
-                response = requests.post(
-                    api_url, files=files, data=data, timeout=timeout
-                )
+                file_content = f.read()
+            
+            # Используем aiohttp для асинхронной загрузки файла
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                form_data = aiohttp.FormData()
+                form_data.add_field('files', file_content, filename=message.document.file_name, content_type='application/json')
+                form_data.add_field('user_id', str(user_id))
+                
+                async with session.post(api_url, data=form_data) as response:
+                    response_status = response.status
+                    response_content = await response.read()
 
             # Удаляем временный файл
             try:
@@ -272,11 +279,14 @@ class BotHandlers:
                 logger.warning(f"Could not delete temp file {temp_file.name}: {e}")
 
             # Отправляем только один ответ - результат или ошибку
-            if response.status_code == 200:
+            if response_status == 200:
                 # Результат уже отправлен через TelegramSender в app.py, не дублируем
                 pass
             else:
-                error_data = response.json() if response.content else {}
+                try:
+                    error_data = json.loads(response_content.decode('utf-8')) if response_content else {}
+                except:
+                    error_data = {}
                 error_msg = error_data.get("error", "Неизвестная ошибка при обработке")
                 await message.answer(f"❌ Ошибка: {error_msg}")
 

@@ -69,6 +69,9 @@ def upload():
             filename = secure_filename(file.filename)
             temp_path = os.path.join(config.UPLOAD_FOLDER, f"temp_{os.urandom(8).hex()}_{filename}")
             
+            # Добавляем путь в список для очистки ДО операций, которые могут упасть
+            temp_files.append(temp_path)
+            
             try:
                 with open(temp_path, 'wb') as f:
                     while True:
@@ -78,7 +81,6 @@ def upload():
                         f.write(chunk)
                 
                 logger.info(f"File saved: {filename}, size: {os.path.getsize(temp_path) / 1024 / 1024:.2f} MB")
-                temp_files.append(temp_path)
             except Exception as save_error:
                 logger.error(f"Error saving file {filename}: {save_error}")
                 failed_files.append({"name": filename, "error": f"Ошибка сохранения файла: {str(save_error)}"})
