@@ -1,6 +1,7 @@
 """Утилиты для обработки файлов и валидации"""
 
 import logging
+import re
 from flask import jsonify
 from werkzeug.utils import secure_filename
 
@@ -58,6 +59,35 @@ def _transliterate_ru(text):
         'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya',
     }
     return ''.join(ru_en.get(c, c) for c in text)
+
+
+def validate_upload_id(upload_id):
+    """
+    Валидация upload_id для предотвращения path traversal атак
+    
+    Args:
+        upload_id: Идентификатор загрузки от клиента
+    
+    Returns:
+        tuple: (is_valid: bool, sanitized_id: str or None, error_message: str or None)
+    """
+    if not upload_id:
+        return False, None, "upload_id is required"
+    
+    # Проверяем на path traversal последовательности
+    if '..' in upload_id or '/' in upload_id or '\\' in upload_id:
+        return False, None, "upload_id contains invalid characters"
+    
+    # Разрешаем только alphanumeric, дефисы и подчеркивания
+    # UUID формат: 8-4-4-4-12 (например: 550e8400-e29b-41d4-a716-446655440000)
+    if not re.match(r'^[a-zA-Z0-9_-]+$', upload_id):
+        return False, None, "upload_id contains invalid characters"
+    
+    # Дополнительная проверка: не должен быть слишком длинным (UUID обычно 36 символов)
+    if len(upload_id) > 128:
+        return False, None, "upload_id is too long"
+    
+    return True, upload_id, None
 
 
 def sanitize_filename(chat_name, default="chat"):

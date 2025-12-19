@@ -254,6 +254,14 @@ def upload_chunk():
         
         logger.info(f"Chunk file received: {chunk_file.filename}, size: {chunk_file.content_length} bytes")
         
+        # Валидация upload_id для предотвращения path traversal
+        from file_utils import validate_upload_id
+        is_valid, sanitized_upload_id, error_msg = validate_upload_id(upload_id)
+        if not is_valid:
+            logger.error(f"Invalid upload_id: {error_msg}")
+            return jsonify({"success": False, "error": f"Invalid upload_id: {error_msg}"}), 400
+        upload_id = sanitized_upload_id
+        
         # Создаем директорию для чанков этого файла
         chunks_dir = os.path.join(config.UPLOAD_FOLDER, 'chunks', upload_id)
         os.makedirs(chunks_dir, exist_ok=True)
@@ -315,6 +323,15 @@ def complete_upload():
         failed_files = []
         
         for upload_id in upload_ids:
+            # Валидация upload_id для предотвращения path traversal
+            from file_utils import validate_upload_id
+            is_valid, sanitized_upload_id, error_msg = validate_upload_id(upload_id)
+            if not is_valid:
+                logger.error(f"Invalid upload_id: {error_msg}")
+                failed_files.append({"name": upload_id, "error": f"Неверный идентификатор загрузки: {error_msg}"})
+                continue
+            upload_id = sanitized_upload_id
+            
             chunks_dir = os.path.join(config.UPLOAD_FOLDER, 'chunks', upload_id)
             
             if not os.path.exists(chunks_dir):
