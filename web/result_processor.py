@@ -107,7 +107,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             mentions_count = len(mentions_with_username)
             channels_count = len(channels)
             
-            logger.info(f"Chat {chat_name}: {total_participants} participants, {len(mentions)} mentions, {channels_count} channels")
+            logger.info(f"Chat {chat_name}: {total_participants} participants, {mentions_count} mentions, {channels_count} channels")
             
             # Проверка: есть ли хоть какие-то данные? (согласовано с combined mode)
             if total_participants == 0 and mentions_count == 0 and channels_count == 0:
@@ -126,16 +126,14 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             else:
                 excel_file = excel_gen.generate(participants, mentions, channels, chat_name)
                 
-                # 1. Очищаем только имя чата (кириллица теперь сохраняется)
+                # Подробный лог для отладки
                 safe_chat_name = sanitize_filename(chat_name, default="chat")
-                
-                # 2. Формируем метку времени (теперь через f-строку отдельно для надежности)
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 
-                # 3. Собираем финальное имя: префикс + очищенное имя + время + расширение
-                filename = f"chat_export_{safe_chat_name}_{timestamp}.xlsx"
+                # Ставим дату ВПЕРЕД, чтобы она точно была в имени
+                filename = f"export_{timestamp}_{safe_chat_name}.xlsx"
                 
-                logger.info(f"Processing chat finished. Filename generated: {filename}")
+                logger.info(f"DEBUG FILENAME: raw='{chat_name}', safe='{safe_chat_name}', final='{filename}'")
                 
                 # mentions_with_username и mentions_count уже определены выше (строка 106-107)
                 caption = (

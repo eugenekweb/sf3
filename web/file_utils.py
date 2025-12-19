@@ -92,35 +92,31 @@ def validate_upload_id(upload_id):
 
 def sanitize_filename(chat_name, default="chat"):
     """
-    Максимально простая очистка имени чата: заменяем только символы, 
-    которые запрещены в именах файлов (Windows/Linux).
-    Кириллица, пробелы и дефисы сохраняются.
-
-    Args:
-        chat_name: Исходное имя чата
-        default: fallback, если после очистки имя пустое
-
-    Returns:
-        str: Безопасное имя файла
+    Ультимативно простая очистка имени файла.
+    Удаляем только системно запрещенные символы.
     """
     if not chat_name or not isinstance(chat_name, str):
         return default
     
-    chat_name = chat_name.strip()
-    if chat_name in ["", "Unknown", "Неизвестный чат"]:
-        return default
-
-    # Заменяем только реально запрещенные символы: \ / : * ? " < > |
-    # Эти символы нельзя использовать в именах файлов в Windows и Linux
-    cleaned = re.sub(r'[\\/*?:"<>|]', "_", chat_name)
+    # 1. Оставляем только буквы, цифры, пробелы, дефисы и точки
+    # Используем простой список разрешенных символов для надежности
+    cleaned = ""
+    # Запрещенные в Windows/Linux символы: / \ : * ? " < > |
+    forbidden = r'/\?%*:|"<>'
     
-    # Убираем управляющие символы (ASCII 0-31)
-    cleaned = "".join(c for c in cleaned if ord(c) >= 32)
+    for char in chat_name:
+        if char not in forbidden and ord(char) > 31:
+            cleaned += char
+        else:
+            cleaned += "_"
+            
+    # 2. Заменяем пробелы на подчеркивания
+    cleaned = cleaned.replace(" ", "_")
     
-    # Схлопываем множественные подчеркивания
+    # 3. Схлопываем подчеркивания
     cleaned = re.sub(r"_+", "_", cleaned)
     
-    # Обрезаем пробелы по краям
-    result = cleaned.strip()
+    # 4. Финальная очистка краев
+    result = cleaned.strip("_-. ")
     
     return result if result else default

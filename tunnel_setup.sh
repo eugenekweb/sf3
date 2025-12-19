@@ -103,7 +103,7 @@ fi
 echo -e "${YELLOW}🐳 Проверяю web сервер...${NC}"
 if ! docker ps | grep -q "web_server"; then
     echo -e "${YELLOW}🚀 Запускаю web сервер...${NC}"
-    docker-compose up -d web
+    docker-compose up -d web --build
     echo -e "${YELLOW}⏳ Жду запуска web сервера (5 секунд)...${NC}"
     sleep 5
 else
@@ -140,7 +140,7 @@ if [ "$USE_DOCKER_COMPOSE" = true ]; then
     }
     
     # Запускаем через docker-compose
-    docker-compose up -d tuna || {
+    docker-compose up -d tuna --build || {
         echo -e "${RED}❌ Не удалось запустить туннель через docker-compose${NC}"
         exit 1
     }
@@ -334,7 +334,7 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
-docker-compose up -d bot
+docker-compose up -d bot --build
 
 echo ""
 echo -e "${GREEN}=== ВСЁ ГОТОВО ===${NC}"
