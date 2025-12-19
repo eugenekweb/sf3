@@ -445,6 +445,14 @@
             root.style.setProperty('--tg-button', params.button_color || '#0088cc');
             root.style.setProperty('--tg-button-text', params.button_text_color || 'white');
 
+            // Синхронизируем Главную кнопку Telegram с темой
+            if (tg.MainButton) {
+                tg.MainButton.setParams({
+                    color: params.button_color || '#0088cc',
+                    text_color: params.button_text_color || 'white'
+                });
+            }
+
             // Тень (адаптация для темной темы)
             if (tg.colorScheme === 'dark') {
                 root.style.setProperty('--tg-shadow', '0 2px 8px rgba(255,255,255,0.1)');
@@ -1040,14 +1048,7 @@
             if (tg.MainButton) {
                 // Привязываем основное действие к Главной кнопке
                 tg.MainButton.onClick(startChunkedUpload);
-                // Устанавливаем базовые параметры
-                // Используем значения напрямую из tg.themeParams, так как Telegram API не поддерживает CSS переменные
-                const buttonColor = tg.themeParams?.button_color || '#0088cc';
-                const buttonTextColor = tg.themeParams?.button_text_color || 'white';
-                tg.MainButton.setParams({
-                    text_color: buttonTextColor,
-                    color: buttonColor
-                });
+                
                 // Сначала скрываем, пока нет файлов
                 tg.MainButton.hide();
             }
