@@ -196,10 +196,12 @@ class BotHandlers:
                     "❌ Приём файлов прямо в бота отключён, используйте WebApp.",
                     reply_markup=keyboard,
                 )
+                return
             else:
                 await message.answer(
                     "⚠️ BACKEND_URL не настроен. Укажите публичный HTTPS в переменной BACKEND_URL."
                 )
+                return
         elif webapp_disabled:
             # Только напрямую в бота (старый режим)
             await BotHandlers._process_document_directly(message, bot_token)
