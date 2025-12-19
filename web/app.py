@@ -11,8 +11,20 @@ from telegram_sender import TelegramSender
 from file_utils import validate_user_id
 from result_processor import process_and_send_results, send_completion_message, send_keyboard_after_processing
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Настройка логирования: интегрируемся с Gunicorn или настраиваем дефолтный вывод
+if __name__ != '__main__':
+    # Если запущены под Gunicorn, используем его настройки для всех логгеров
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    root_logger = logging.getLogger()
+    # Убираем лишние обработчики, если они уже есть, чтобы не было двойного логирования
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    root_logger.handlers = gunicorn_logger.handlers
+    root_logger.setLevel(gunicorn_logger.level)
+    logger = logging.getLogger(__name__)
+else:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
 
 app = Flask(__name__, template_folder='templates')
 app.config.from_object(config)
