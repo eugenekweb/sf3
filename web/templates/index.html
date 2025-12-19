@@ -383,6 +383,14 @@
         <div id="filesProgress"></div>
     </div>
     <div class="scroll-indicator" id="scrollIndicator">⬇ Прокрутите вниз</div>
+
+    {% if debug_mode %}
+    <!-- Кнопка-заменитель для отладки в браузере (вне Telegram) -->
+    <button id="fallbackSubmitBtn" 
+            style="display: none; width: 100%; padding: 16px; background: var(--tg-link); color: var(--tg-button-text); border: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-top: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        🚀 Обработать файлы
+    </button>
+    {% endif %}
 </div>
 
 <script>
