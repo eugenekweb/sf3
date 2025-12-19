@@ -1,7 +1,9 @@
 import json
 import logging
+import chardet
 from typing import Dict, List, Set, Tuple
 from collections import defaultdict
+from config import config
 
 logger = logging.getLogger(__name__)
 
@@ -10,75 +12,97 @@ class ChatParser:
     """Парсер экспорта Telegram чата"""
 
     def __init__(self):
-        self.participants: Dict[str, Dict] = {}  # from_id -> {from_id, name}
-        self.mentions: Dict[str, Dict] = {}  # username -> {username}
-        self.channels: Dict[str, Dict] = {}  # channel_id -> {name}
+        self.participants: Dict[str, Dict] = {}
+        self.mentions: Dict[str, Dict] = {}
+        self.channels: Dict[str, Dict] = {}
         self.deleted_accounts: Set[str] = set()
 
     def parse_file(self, filepath: str) -> Dict:
-        """Парсинг одного JSON файла"""
+        """Парсинг одного JSON файла с проверкой кодировки и структуры"""
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                with open(filepath, "rb") as f:
+                    raw_data = f.read()
+                    detected = chardet.detect(raw_data)
+                    
+                    if detected:
+                        encoding = (detected.get("encoding") or "").lower()
+                        confidence = detected.get("confidence", 0)
+                        # Разрешаем UTF-8, UTF-8-SIG и ASCII (как подмножество UTF-8)
+                        if encoding in ["utf-8", "utf-8-sig", "ascii"]:
+                            pass  # Валидные кодировки, продолжаем обработку
+                        elif confidence > config.ENCODING_CONFIDENCE_THRESHOLD:
+                            raise ValueError(
+                                f"Файл не в кодировке UTF-8. Обнаружена кодировка: {detected['encoding']} "
+                                f"(уверенность: {confidence:.0%}). Конвертируйте файл в UTF-8."
+                            )
+                    try:
+                        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                            data = json.load(f)
+                    except json.JSONDecodeError:
+                        raise ValueError(f"Ошибка парсинга JSON. Возможно, файл поврежден или не является JSON.")
+                    except Exception:
+                        raise e
 
-            # Проверка структуры
             if "messages" not in data:
                 raise ValueError(
                     "Файл не содержит поле 'messages'. Это не экспорт Telegram чата?"
                 )
+            
+            if not isinstance(data.get("messages"), list):
+                raise ValueError(
+                    "Поле 'messages' должно быть массивом. Это не экспорт Telegram чата?"
+                )
 
             return {
-                "name": data.get("name", "Unknown"),
+                "name": data.get("name", "Неизвестный чат"),
                 "type": data.get("type", "unknown"),
                 "id": data.get("id"),
                 "messages": data.get("messages", []),
             }
+        except UnicodeDecodeError as e:
+            raise ValueError(f"Ошибка декодирования UTF-8: {e}. Файл должен быть в кодировке UTF-8.")
         except json.JSONDecodeError as e:
             raise ValueError(f"Ошибка парсинга JSON: {e}")
+        except ValueError as e:
+            # Пробрасываем ValueError как есть (наши проверки)
+            raise
         except Exception as e:
             raise ValueError(f"Ошибка чтения файла: {e}")
 
     def extract_participants(self, messages: List[Dict]) -> None:
-        """
-        Извлечение участников из сообщений
-        Кейс 1: from + from_id (строгая связь)
-        Кейс 3: forwarded_from + forwarded_from_id
-        """
+        """Извлечение участников из сообщений"""
         for msg in messages:
-            # Кейс 1: Обычные сообщения
             if msg.get("type") == "message":
                 from_id = msg.get("from_id")
                 from_name = msg.get("from")
 
-                # Пропускаем удаленные аккаунты
                 if not from_id or from_id in self.deleted_accounts:
                     continue
 
-                # Проверка на удаленный аккаунт
                 if isinstance(from_id, str) and "deleted" in from_id.lower():
                     self.deleted_accounts.add(from_id)
                     continue
 
-                # Сохраняем участника (строгая пара: имя - ИД)
                 if from_id not in self.participants:
                     self.participants[from_id] = {
                         "from_id": from_id,
                         "name": from_name or "Unknown",
                     }
 
-            # Кейс 3: Пересланные сообщения
             forwarded_from_id = msg.get("forwarded_from_id")
             forwarded_from_name = msg.get("forwarded_from")
 
             if forwarded_from_id and forwarded_from_name:
-                # Пропускаем каналы (они обрабатываются отдельно)
                 if (
                     isinstance(forwarded_from_id, str)
                     and "channel" in forwarded_from_id.lower()
                 ):
                     continue
 
-                # Сохраняем участника из пересланного сообщения
                 if forwarded_from_id not in self.participants:
                     self.participants[forwarded_from_id] = {
                         "from_id": forwarded_from_id,
@@ -175,9 +199,6 @@ class ChatParser:
                             "name": from_name,
                         }
 
-    def match_mentions_to_participants(self) -> None:
-        """Сопоставление упоминаний с участниками - отключено, используем только прямые связи"""
-        pass
 
     def process_messages(self, messages: List[Dict]) -> None:
         """Обработка всех сообщений для извлечения данных"""
@@ -210,7 +231,9 @@ class FileGrouper:
     @staticmethod
     def group_files(file_data_list: List[Dict]) -> Dict[Tuple, List[Dict]]:
         """
-        Группировка файлов по заголовку чата (name, type, id)
+        Группировка файлов по заголовку чата.
+        Приоритет: id (если есть), иначе (name, type).
+        Это позволяет группировать файлы одного чата, даже если name отличается или отсутствует.
 
         Args:
             file_data_list: Список словарей с данными файлов {'name', 'type', 'id', 'messages', 'filepath'}
@@ -221,10 +244,33 @@ class FileGrouper:
         groups = defaultdict(list)
 
         for file_data in file_data_list:
-            key = (file_data.get("name"), file_data.get("type"), file_data.get("id"))
+            chat_id = file_data.get("id")
+            chat_type = file_data.get("type")
+            chat_name = file_data.get("name")
+            
+            if chat_id:
+                key = (None, chat_type, chat_id)
+            else:
+                key = (chat_name, chat_type, None)
+            
             groups[key].append(file_data)
 
-        return dict(groups)
+        result = {}
+        for key, files in groups.items():
+            final_name = None
+            for file_data in files:
+                name = file_data.get("name")
+                if name and name != "Неизвестный чат":
+                    final_name = name
+                    break
+            
+            if not final_name and files:
+                final_name = files[0].get("name") or "Неизвестный чат"
+            
+            final_key = (final_name, key[1], key[2])
+            result[final_key] = files
+
+        return result
 
     @staticmethod
     def merge_messages(file_data_list: List[Dict]) -> List[Dict]:

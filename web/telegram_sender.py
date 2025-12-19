@@ -2,6 +2,7 @@ import requests
 import logging
 from typing import Optional
 from io import BytesIO
+from config import config
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,7 @@ class TelegramSender:
         self.bot_token = bot_token
         self.api_url = f"https://api.telegram.org/bot{bot_token}"
     
-    def send_message(self, chat_id: int, text: str, parse_mode: str = "HTML") -> bool:
+    def send_message(self, chat_id: int, text: str, parse_mode: str = "Markdown") -> bool:
         """
         Отправка текстового сообщения
         
@@ -32,7 +33,7 @@ class TelegramSender:
                 "parse_mode": parse_mode
             }
             
-            response = requests.post(url, json=data, timeout=30)
+            response = requests.post(url, json=data, timeout=config.UPLOAD_TIMEOUT)
             
             if response.status_code == 200:
                 logger.info(f"Message sent to {chat_id}")
@@ -74,7 +75,7 @@ class TelegramSender:
             if caption:
                 data['caption'] = caption
             
-            response = requests.post(url, files=files, data=data, timeout=60)
+            response = requests.post(url, files=files, data=data, timeout=config.PROCESSING_TIMEOUT)
             
             if response.status_code == 200:
                 logger.info(f"Document {filename} sent to {chat_id}")
@@ -89,21 +90,42 @@ class TelegramSender:
     
     def send_error(self, chat_id: int, error_message: str) -> bool:
         """Отправка сообщения об ошибке"""
-        text = f"❌ <b>Ошибка при обработке:</b>\n\n{error_message}"
-        return self.send_message(chat_id, text)
+        text = f"❌ *Ошибка при обработке:*\n\n{error_message}"
+        return self.send_message(chat_id, text, parse_mode="Markdown")
     
-    def send_success_notification(self, chat_id: int, chat_name: str, 
-                                  participants_count: int, mentions_count: int,
-                                  channels_count: int = 0) -> bool:
-        """Отправка уведомления об успешной обработке"""
-        text = (
-            f"✅ <b>Обработка завершена!</b>\n\n"
-            f"📊 <b>Чат:</b> {chat_name}\n"
-            f"👥 Участников: {participants_count}\n"
-            f"🔗 Упоминаний: {mentions_count}"
-        )
-        # Упоминаем каналы только если они есть
-        if channels_count > 0:
-            text += f"\n📢 Каналов: {channels_count}"
-        return self.send_message(chat_id, text)
+    def send_message_with_keyboard(self, chat_id: int, text: str, 
+                                   keyboard: dict, parse_mode: str = "Markdown") -> bool:
+        """
+        Отправка текстового сообщения с inline клавиатурой
+        
+        Args:
+            chat_id: ID чата пользователя
+            text: Текст сообщения
+            keyboard: Словарь с inline_keyboard (формат Telegram API)
+            parse_mode: Режим парсинга (HTML или Markdown)
+        
+        Returns:
+            bool: True если успешно, False иначе
+        """
+        try:
+            url = f"{self.api_url}/sendMessage"
+            data = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+                "reply_markup": keyboard
+            }
+            
+            response = requests.post(url, json=data, timeout=config.UPLOAD_TIMEOUT)
+            
+            if response.status_code == 200:
+                logger.info(f"Message with keyboard sent to {chat_id}")
+                return True
+            else:
+                logger.error(f"Failed to send message with keyboard: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error sending message with keyboard: {e}")
+            return False
 

@@ -24,4 +24,10 @@ class Config:
     # По умолчанию используем localhost для разработки
     BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    VERBOSE_LOGGING = os.getenv("VERBOSE_LOGGING", "False").lower() == "true"
+    # Таймауты (в секундах)
+    UPLOAD_TIMEOUT = int(os.getenv("UPLOAD_TIMEOUT", "300"))  # 5 минут
+    # Настройки управления веб-апп
+    WEBAPP_DISABLED = os.getenv("WEBAPP_DISABLED", "False").lower() == "true"
+    WEBAPP_ONLY = os.getenv("WEBAPP_ONLY", "False").lower() == "true"
 
