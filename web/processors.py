@@ -58,8 +58,8 @@ class ChatParser:
                 )
 
             return {
-                "name": data.get("name", "Unknown"),
-                "type": data.get("type", "unknown"),
+                "name": str(data.get("name", "Unknown")).strip(),
+                "type": str(data.get("type", "unknown")).strip(),
                 "id": data.get("id"),
                 "messages": data.get("messages", []),
             }

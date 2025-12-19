@@ -8,7 +8,7 @@ import json
 from datetime import datetime, timedelta
 from processors import ChatParser, FileGrouper
 from telegram_sender import TelegramSender
-from file_utils import validate_user_id
+from file_utils import validate_user_id, validate_upload_id
 from result_processor import process_and_send_results, send_completion_message, send_keyboard_after_processing
 
 # Настройка логирования: интегрируемся с Gunicorn или настраиваем дефолтный вывод
@@ -267,7 +267,6 @@ def upload_chunk():
         logger.info(f"Chunk file received: {chunk_file.filename}, size: {chunk_file.content_length} bytes")
         
         # Валидация upload_id для предотвращения path traversal
-        from file_utils import validate_upload_id
         is_valid, sanitized_upload_id, error_msg = validate_upload_id(upload_id)
         if not is_valid:
             logger.error(f"Invalid upload_id: {error_msg}")
@@ -338,7 +337,6 @@ def complete_upload():
         
         for upload_id in upload_ids:
             # Валидация upload_id для предотвращения path traversal
-            from file_utils import validate_upload_id
             is_valid, sanitized_upload_id, error_msg = validate_upload_id(upload_id)
             if not is_valid:
                 logger.error(f"Invalid upload_id: {error_msg}")

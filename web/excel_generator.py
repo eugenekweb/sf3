@@ -1,4 +1,5 @@
 from datetime import datetime
+import html
 from io import BytesIO
 from typing import List, Dict
 import openpyxl
@@ -183,7 +184,7 @@ class ExcelGenerator:
             str: Текстовое представление списка в формате HTML
         """
         # Экранируем chat_name сразу в начале функции для использования везде
-        chat_name_escaped = chat_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        chat_name_escaped = html.escape(chat_name)
         
         # Используем HTML для надежного форматирования в Telegram
         text = f"📊 <b>Результаты анализа чата: {chat_name_escaped}</b>\n\n"
@@ -196,8 +197,8 @@ class ExcelGenerator:
                 name = p.get("name", "Unknown")
                 from_id = p.get("from_id", "N/A")
                 # Экранируем HTML спецсимволы
-                name_escaped = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                from_id_escaped = str(from_id).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                name_escaped = html.escape(name)
+                from_id_escaped = html.escape(str(from_id))
                 participants_list.append(f"{name_escaped} ({from_id_escaped})")
             # Оборачиваем в HTML pre/code блок для моноширинного шрифта
             text += "<pre><code>" + "\n".join(participants_list) + "</code></pre>\n\n"
@@ -211,7 +212,7 @@ class ExcelGenerator:
             for m in mentions_with_username:
                 username = m.get("username", "")
                 # Экранируем HTML спецсимволы
-                username_escaped = username.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                username_escaped = html.escape(username)
                 mentions_list.append(f"@{username_escaped}")
             # Оборачиваем в HTML pre/code блок
             text += "<pre><code>" + "\n".join(mentions_list) + "</code></pre>\n\n"
@@ -225,8 +226,8 @@ class ExcelGenerator:
                 name = ch.get("name", "Unknown")
                 channel_id = ch.get("channel_id", "N/A")
                 # Экранируем HTML спецсимволы
-                name_escaped = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                channel_id_escaped = str(channel_id).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                name_escaped = html.escape(name)
+                channel_id_escaped = html.escape(str(channel_id))
                 channels_list.append(f"{name_escaped} ({channel_id_escaped})")
             # Оборачиваем в HTML pre/code блок
             text += "<pre><code>" + "\n".join(channels_list) + "</code></pre>\n\n"

@@ -10,7 +10,6 @@ from aiogram.filters import Command
 import json
 import logging
 import os
-import requests
 import aiohttp
 import tempfile
 from src.utils import Config as BotConfig

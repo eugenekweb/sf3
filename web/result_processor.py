@@ -31,10 +31,21 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
     excel_gen = ExcelGenerator()
     parser = ChatParser()
     
+    # Общая дедупликация файлов по filepath (защита от повторной обработки)
+    seen_filepaths = set()
+    unique_file_data_list = []
+    for file_data in file_data_list:
+        filepath = file_data.get('filepath')
+        if filepath and filepath not in seen_filepaths:
+            seen_filepaths.add(filepath)
+            unique_file_data_list.append(file_data)
+        elif not filepath:
+            unique_file_data_list.append(file_data)
+    
     if combine_results:
-        logger.info("Combine results flag is ON. Merging all files into one result.")
+        logger.info(f"Combine results flag is ON. Merging all {len(unique_file_data_list)} files into one result.")
         parser.reset()
-        all_messages = FileGrouper.merge_messages(file_data_list)
+        all_messages = FileGrouper.merge_messages(unique_file_data_list)
         parser.process_messages(all_messages)
         results = parser.get_results()
         
@@ -66,7 +77,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             caption = (
                 f"📊 Сводный экспорт участников\n\n"
                 f"✅ Обработка завершена!\n\n"
-                f"💬 Файлы: {len(file_data_list)}\n"
+                f"💬 Файлы: {len(unique_file_data_list)}\n"
                 f"👤 Участников: {total_participants}\n"
                 f"👥 Упоминаний: {mentions_count}"
             )
@@ -76,19 +87,6 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             time.sleep(0.5)
         groups_count = 1
     else:
-        # Дедупликация файлов по filepath перед группировкой
-        # (защита от повторной обработки одного и того же файла)
-        seen_filepaths = set()
-        unique_file_data_list = []
-        for file_data in file_data_list:
-            filepath = file_data.get('filepath')
-            if filepath and filepath not in seen_filepaths:
-                seen_filepaths.add(filepath)
-                unique_file_data_list.append(file_data)
-            elif not filepath:
-                # Если filepath отсутствует, все равно добавляем (может быть из другого источника)
-                unique_file_data_list.append(file_data)
-        
         groups = FileGrouper.group_files(unique_file_data_list)
         groups_count = len(groups)
         
