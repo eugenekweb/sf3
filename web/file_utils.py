@@ -20,11 +20,7 @@ def validate_user_id(user_id_str, debug_mode=False):
         tuple: (user_id: int or None, error_response: dict or None, status_code: int or None)
     """
     if not user_id_str:
-        if debug_mode:
-            user_id_str = "123456789"
-            logger.warning("DEBUG mode: using test user_id")
-        else:
-            return None, jsonify({"error": "user_id not provided"}), 400
+        return None, jsonify({"error": "user_id not provided"}), 400
 
     try:
         user_id = int(user_id_str)
