@@ -125,7 +125,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
     return {"groups_count": groups_count}
 
 
-def send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count=0):
+def send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count=0, error_message_sent=False):
     """
     Отправка сообщения о завершении обработки
     
@@ -134,6 +134,7 @@ def send_completion_message(user_id, total_files_processed, total_files_uploaded
         total_files_processed: Количество обработанных файлов
         total_files_uploaded: Количество загруженных файлов
         failed_count: Количество файлов с ошибками
+        error_message_sent: Флаг, указывающий, что сообщение об ошибках уже было отправлено
     """
     if not config.BOT_TOKEN:
         return
@@ -142,18 +143,21 @@ def send_completion_message(user_id, total_files_processed, total_files_uploaded
     
     if total_files_uploaded > 1 or failed_count > 0:
         time.sleep(0.5)
-        if failed_count > 0:
+        if failed_count > 0 and not error_message_sent:
+            # Отправляем сообщение об ошибках только если оно еще не было отправлено
             sender.send_message(
                 user_id,
                 f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}. Ошибки см. в сообщении выше.",
                 parse_mode="Markdown"
             )
-        else:
+        elif failed_count == 0:
+            # Отправляем сообщение о завершении только если нет ошибок
             sender.send_message(
                 user_id,
                 f"✅ Обработано {total_files_processed} файл(а) из {total_files_uploaded}.",
                 parse_mode="Markdown"
             )
+        # Если error_message_sent=True и failed_count > 0, не отправляем дублирующее сообщение
 
 
 def send_keyboard_after_processing(user_id):

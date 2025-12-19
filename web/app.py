@@ -5,6 +5,7 @@ import os
 import logging
 import shutil
 import json
+from datetime import datetime, timedelta
 from processors import ChatParser, FileGrouper
 from telegram_sender import TelegramSender
 from file_utils import validate_user_id
@@ -20,6 +21,48 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 if not os.path.exists(config.UPLOAD_FOLDER):
     os.makedirs(config.UPLOAD_FOLDER)
+
+
+def _cleanup_old_chunks():
+    """
+    Очистка старых директорий с чанками, которые не были собраны в файлы.
+    Удаляет директории старше CHUNK_EXPIRY_HOURS часов.
+    """
+    chunks_base_dir = os.path.join(config.UPLOAD_FOLDER, 'chunks')
+    if not os.path.exists(chunks_base_dir):
+        return
+    
+    expiry_time = datetime.now() - timedelta(hours=config.CHUNK_EXPIRY_HOURS)
+    deleted_count = 0
+    
+    try:
+        for upload_id_dir in os.listdir(chunks_base_dir):
+            upload_id_path = os.path.join(chunks_base_dir, upload_id_dir)
+            if not os.path.isdir(upload_id_path):
+                continue
+            
+            # Проверяем время модификации директории или метаданных
+            metadata_path = os.path.join(upload_id_path, 'metadata.json')
+            if os.path.exists(metadata_path):
+                # Используем время модификации метаданных
+                mtime = datetime.fromtimestamp(os.path.getmtime(metadata_path))
+            else:
+                # Используем время модификации директории
+                mtime = datetime.fromtimestamp(os.path.getmtime(upload_id_path))
+            
+            if mtime < expiry_time:
+                try:
+                    shutil.rmtree(upload_id_path)
+                    deleted_count += 1
+                    logger.info(f"Deleted old chunks directory: {upload_id_path} (age: {datetime.now() - mtime})")
+                except Exception as e:
+                    logger.error(f"Error deleting old chunks directory {upload_id_path}: {e}")
+        
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} old chunk directory(ies)")
+    except Exception as e:
+        logger.error(f"Error during chunks cleanup: {e}")
+
 
 @app.route('/')
 def index():
@@ -148,7 +191,7 @@ def upload():
         total_files_processed = len(file_data_list)
         total_files_uploaded = len(files)
         failed_count = len(failed_files) if 'failed_files' in locals() else 0
-        send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count)
+        send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count, error_message_sent)
         
         # Отправка клавиатуры
         send_keyboard_after_processing(user_id)
@@ -214,6 +257,9 @@ def upload_chunk():
         # Создаем директорию для чанков этого файла
         chunks_dir = os.path.join(config.UPLOAD_FOLDER, 'chunks', upload_id)
         os.makedirs(chunks_dir, exist_ok=True)
+        
+        # Очистка старых чанков при загрузке нового
+        _cleanup_old_chunks()
         
         # Сохраняем чанк
         chunk_path = os.path.join(chunks_dir, f'chunk_{chunk_index}.part')
@@ -379,7 +425,7 @@ def complete_upload():
         total_files_processed = len(file_data_list)
         total_files_uploaded = len(upload_ids)
         failed_count = len(failed_files) if 'failed_files' in locals() else 0
-        send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count)
+        send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count, error_message_sent)
         
         # Отправка клавиатуры
         send_keyboard_after_processing(user_id)

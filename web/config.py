@@ -17,6 +17,7 @@ class Config:
     UPLOAD_TIMEOUT = int(os.getenv("UPLOAD_TIMEOUT", "300"))  # 5 минут
     PROCESSING_TIMEOUT = int(os.getenv("PROCESSING_TIMEOUT", "1800"))  # 30 минут
     CHUNK_TIMEOUT = int(os.getenv("CHUNK_TIMEOUT", "300"))  # 5 минут на чанк
+    MESSAGE_TIMEOUT = int(os.getenv("MESSAGE_TIMEOUT", "30"))  # 30 секунд для текстовых сообщений
 
     # Пороги и лимиты
     EXCEL_THRESHOLD = int(os.getenv("EXCEL_THRESHOLD", "50"))  # Порог для Excel/текст

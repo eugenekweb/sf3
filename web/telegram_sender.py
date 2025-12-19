@@ -33,7 +33,7 @@ class TelegramSender:
                 "parse_mode": parse_mode
             }
             
-            response = requests.post(url, json=data, timeout=config.UPLOAD_TIMEOUT)
+            response = requests.post(url, json=data, timeout=config.MESSAGE_TIMEOUT)
             
             if response.status_code == 200:
                 logger.info(f"Message sent to {chat_id}")
@@ -116,7 +116,7 @@ class TelegramSender:
                 "reply_markup": keyboard
             }
             
-            response = requests.post(url, json=data, timeout=config.UPLOAD_TIMEOUT)
+            response = requests.post(url, json=data, timeout=config.MESSAGE_TIMEOUT)
             
             if response.status_code == 200:
                 logger.info(f"Message with keyboard sent to {chat_id}")
