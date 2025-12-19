@@ -45,6 +45,15 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
         mentions_count = len(mentions_with_username)
         channels_count = len(channels)
         
+        # Проверка: есть ли хоть какие-то данные?
+        if total_participants == 0 and mentions_count == 0 and channels_count == 0:
+            sender.send_message(
+                user_id,
+                "⚠️ В объединенных файлах не найдено участников, упоминаний или каналов.",
+                parse_mode="Markdown"
+            )
+            return {"groups_count": 0}
+        
         excel_file = excel_gen.generate(participants, mentions, channels, "Combined result")
         filename = f"combined-export-{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
         caption = (
