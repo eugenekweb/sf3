@@ -84,9 +84,6 @@ if ! grep -q "^BOT_TOKEN=" "$ENV_FILE" || grep -q "^BOT_TOKEN=$" "$ENV_FILE" || 
 fi
 
 echo -e "${YELLOW}📋 Tuna Tunnel:${NC}"
-echo -e "  ✅ Бесплатный"
-echo -e "  ✅ Простой в использовании"
-echo -e "  ✅ Работает через Docker"
 echo ""
 
 # Проверяем, есть ли сервис tuna в docker-compose.yml (не закомментирован)

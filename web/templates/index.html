@@ -564,7 +564,11 @@
 
     function initUser() {
         // Получаем данные пользователя из Telegram WebApp API
-        const user = (typeof tg !== 'undefined' && tg?.initDataUnsafe?.user) ? tg.initDataUnsafe.user : null;
+        // Безопасная проверка: tg должен быть объектом и не null
+        let user = null;
+        if (typeof window.Telegram !== 'undefined' && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) {
+            user = window.Telegram.WebApp.initDataUnsafe.user;
+        }
 
         if (user) {
             userId = user.id.toString();
@@ -580,6 +584,12 @@
             const debugSetUserIdBtn = document.getElementById('debugSetUserId');
 
             if (debugSetUserIdBtn && debugUserIdInput) {
+                // Если ID уже введен в поле при загрузке, подхватываем его
+                if (debugUserIdInput.value.trim()) {
+                    userId = debugUserIdInput.value.trim();
+                    userInfo.textContent = `🐛 DEBUG: User ID установлен (ID: ${userId})`;
+                }
+
                 debugSetUserIdBtn.addEventListener('click', () => {
                     const manualUserId = debugUserIdInput.value.trim();
                     if (manualUserId && !isNaN(manualUserId)) {
@@ -590,16 +600,13 @@
                         showError('Введите корректный User ID (число)');
                     }
                 });
-                // В DEBUG-режиме не устанавливаем тестовый ID автоматически,
-                // чтобы избежать случайного использования тестовых данных в продакшене.
-                // При необходимости введите User ID вручную (например, 123456789) и нажмите кнопку.
             }
         } else {
-            userInfo.textContent = '⚠️ Не удалось получить ID пользователя. Откройте приложение через Telegram.';
+            userInfo.textContent = '⚠️ Откройте приложение через Telegram';
             uploadZone.style.pointerEvents = 'none';
             uploadZone.style.opacity = '0.5';
         }
-        updateMainButtonState(); // Инициализация MainButton
+        updateMainButtonState();
     }
 
     function validateFile(file) {
