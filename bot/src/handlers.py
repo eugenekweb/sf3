@@ -242,10 +242,10 @@ class BotHandlers:
             bot = message.bot
             file = await bot.get_file(message.document.file_id)
 
-            # Сохраняем во временный файл
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
-            await bot.download_file(file.file_path, temp_file.name)
-            temp_file.close()
+            # Создаем временный файл без открытого дескриптора (для совместимости с Windows)
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".json")
+            os.close(temp_fd)  # Закрываем дескриптор сразу после создания
+            await bot.download_file(file.file_path, temp_path)
 
             user_id = message.from_user.id
 
@@ -259,7 +259,7 @@ class BotHandlers:
             timeout = aiohttp.ClientTimeout(total=BotConfig.UPLOAD_TIMEOUT)
             
             # Читаем файл в память для передачи через aiohttp
-            with open(temp_file.name, "rb") as f:
+            with open(temp_path, "rb") as f:
                 file_content = f.read()
             
             # Используем aiohttp для асинхронной загрузки файла
@@ -276,9 +276,9 @@ class BotHandlers:
 
             # Удаляем временный файл
             try:
-                os.unlink(temp_file.name)
+                os.unlink(temp_path)
             except OSError as e:
-                logger.warning(f"Could not delete temp file {temp_file.name}: {e}")
+                logger.warning(f"Could not delete temp file {temp_path}: {e}")
 
             # Отправляем только один ответ - результат или ошибку
             if response_status == 200:
