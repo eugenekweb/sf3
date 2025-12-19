@@ -324,20 +324,6 @@
     <h1>📤 Загрузка файлов экспорта</h1>
     <div class="user-info" id="userInfo">Загрузка...</div>
 
-    {% if debug_mode %}
-    <div class="debug-mode" id="debugMode"
-         style="display: none; background: var(--tg-bg); border: 1px solid var(--tg-hint); padding: 12px; margin: 16px 0; border-radius: 6px;">
-        <strong>🐛 DEBUG MODE</strong><br>
-        <label for="debugUserId" style="display: block; margin-top: 8px;">User ID (для тестирования):</label>
-        <input type="text" id="debugUserId" placeholder="Введите User ID"
-               style="width: 100%; padding: 8px; margin-top: 4px; border: 1px solid var(--tg-hint); border-radius: 4px; background: var(--tg-secondary-bg); color: var(--tg-text);">
-        <button id="debugSetUserId"
-                style="margin-top: 8px; padding: 6px 12px; background: var(--tg-link); border: none; border-radius: 4px; cursor: pointer; color: var(--tg-button-text);">
-            Установить User ID
-        </button>
-    </div>
-    {% endif %}
-
     <div class="info-text">
         📋 <b>Требования:</b><br>
         • Только JSON файлы<br>
@@ -378,14 +364,6 @@
         <div id="filesProgress"></div>
     </div>
     <div class="scroll-indicator" id="scrollIndicator">⬇ Прокрутите вниз</div>
-
-    {% if debug_mode %}
-    <!-- Кнопка-заменитель для отладки в браузере (вне Telegram) -->
-    <button id="fallbackSubmitBtn" 
-            style="display: none; width: 100%; padding: 16px; background: var(--tg-link); color: var(--tg-button-text); border: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-top: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-        🚀 Обработать файлы
-    </button>
-    {% endif %}
 </div>
 
 <script>
@@ -407,7 +385,6 @@
     const filesList = document.getElementById('filesList');
     const combineRow = document.getElementById('combineRow');
     const combineCheckbox = document.getElementById('combineCheckbox');
-    const fallbackSubmitBtn = document.getElementById('fallbackSubmitBtn'); // Fallback кнопка для DEBUG режима в браузере
     const loading = document.getElementById('loading');
     const userInfo = document.getElementById('userInfo');
     const errorEl = document.getElementById('error');
@@ -469,10 +446,7 @@
     // Обновляет состояние Главной кнопки Telegram.
 
     function updateMainButtonState() {
-        const hasMainButton = typeof tg !== 'undefined' && tg?.MainButton;
-        const showFallbackButton = debugMode && !hasMainButton;
-        
-        if (hasMainButton) {
+        if (typeof tg !== 'undefined' && tg?.MainButton) {
             const mb = tg.MainButton;
 
             if (files.length > 0 && userId) {
@@ -482,17 +456,6 @@
                 mb.enable();
             } else {
                 mb.hide();
-            }
-        }
-        
-        // Управление fallback кнопкой для DEBUG режима в браузере
-        if (showFallbackButton && fallbackSubmitBtn) {
-            if (files.length > 0 && userId) {
-                fallbackSubmitBtn.textContent = `🚀 Обработать ${files.length} файл(ов)`;
-                fallbackSubmitBtn.style.display = 'block';
-                fallbackSubmitBtn.disabled = false;
-            } else {
-                fallbackSubmitBtn.style.display = 'none';
             }
         }
     }
@@ -518,15 +481,6 @@
         overlay.style.display = 'none';
         progressContainer.style.display = 'none';
         loading.style.display = 'none';
-
-        // Сброс состояния загрузки
-        const hasMainButton = typeof tg !== 'undefined' && tg?.MainButton;
-        const showFallbackButton = debugMode && !hasMainButton;
-        
-        // Разблокируем fallback кнопку при ошибке
-        if (showFallbackButton && fallbackSubmitBtn) {
-            fallbackSubmitBtn.disabled = false;
-        }
         
         updateMainButtonState(); // Сбросит MainButton в состояние "Готов" или скроет
 
@@ -564,50 +518,10 @@
             user = tg.initDataUnsafe.user;
         }
 
-        const debugBlock = document.getElementById('debugMode');
-
         if (user) {
             userId = user.id.toString();
             userName = user.first_name || user.username || 'Пользователь';
             userInfo.textContent = `👤 ${userName} (ID: ${userId})`;
-            
-            // Если мы в Telegram, скрываем блок дебага, даже если DEBUG=True
-            if (debugBlock) {
-                debugBlock.style.display = 'none';
-            }
-        } else if (debugMode) {
-            // В режиме DEBUG разрешаем работу без Telegram
-            console.log('DEBUG MODE: Telegram WebApp not available, using manual User ID');
-            userInfo.textContent = '🐛 DEBUG MODE: Введите User ID вручную';
-            
-            // Показываем блок дебага в браузере
-            if (debugBlock) {
-                debugBlock.style.display = 'block';
-            }
-
-            // Логика для дебаг-поля
-            const debugUserIdInput = document.getElementById('debugUserId');
-            const debugSetUserIdBtn = document.getElementById('debugSetUserId');
-
-            if (debugSetUserIdBtn && debugUserIdInput) {
-                // Если ID уже введен в поле при загрузке, подхватываем его
-                if (debugUserIdInput.value.trim()) {
-                    userId = debugUserIdInput.value.trim();
-                    userInfo.textContent = `🐛 DEBUG: User ID установлен (ID: ${userId})`;
-                }
-
-                debugSetUserIdBtn.addEventListener('click', () => {
-                    const manualUserId = debugUserIdInput.value.trim();
-                    if (manualUserId && !isNaN(manualUserId)) {
-                        userId = manualUserId;
-                        userInfo.textContent = `🐛 DEBUG: User ID установлен вручную (ID: ${userId})`;
-                        console.log('Manual User ID set:', userId);
-                        updateMainButtonState();
-                    } else {
-                        showError('Введите корректный User ID (число)');
-                    }
-                });
-            }
         } else {
             userInfo.textContent = '⚠️ Откройте приложение через Telegram';
             uploadZone.style.pointerEvents = 'none';
@@ -1059,9 +973,6 @@
     function initialize() {
         applyTheme();
 
-        const hasMainButton = typeof tg !== 'undefined' && tg?.MainButton;
-        const showFallbackButton = debugMode && !hasMainButton;
-
         if (typeof tg !== 'undefined' && tg) {
             // Подписываемся на смену темы
             tg.onEvent('themeChanged', applyTheme);
@@ -1074,12 +985,6 @@
                 // Сначала скрываем, пока нет файлов
                 tg.MainButton.hide();
             }
-        }
-
-        // Настраиваем fallback кнопку для DEBUG режима в браузере
-        if (showFallbackButton && fallbackSubmitBtn) {
-            fallbackSubmitBtn.addEventListener('click', startChunkedUpload);
-            // Кнопка будет показываться/скрываться через updateMainButtonState()
         }
 
         initUser();
