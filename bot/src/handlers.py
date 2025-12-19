@@ -36,7 +36,9 @@ class BotHandlers:
         # Проверяем доступность URL асинхронно (не блокируем event loop)
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(backend_url, timeout=aiohttp.ClientTimeout(total=2)) as response:
+                async with session.get(
+                    backend_url, timeout=aiohttp.ClientTimeout(total=2)
+                ) as response:
                     if response.status >= 400:
                         logger.warning(f"BACKEND_URL недоступен: {backend_url}")
                         return None
@@ -70,7 +72,7 @@ class BotHandlers:
             "1) Экспортируй историю чата в JSON\n"
             "2) Нажми кнопку ниже «Открыть WebApp»\n"
             "3) <b>При первом открытии появится страница Tuna с предупреждением:</b>\n"
-            "   • На странице будет текст: \"Вы собираетесь посетить [домен].ru.tuna.am\"\n"
+            '   • На странице будет текст: "Вы собираетесь посетить [домен].ru.tuna.am"\n'
             "   • И предупреждение о безопасности\n"
             "   • <b>Нажми кнопку «Посетить»</b> для продолжения\n"
             "   • Это нормально — так работает туннель Tuna (безопасно)\n"
@@ -110,7 +112,7 @@ class BotHandlers:
             "🔹 <b>Шаг 2: Загрузка в бота</b>\n"
             "1. Нажмите кнопку Открыть WebApp\n"
             "2. При первом открытии появится страница сервиса Tuna с предупреждением:\n"
-            "   • На странице будет текст: \"Вы собираетесь посетить [домен].ru.tuna.am\"\n"
+            '   • На странице будет текст: "Вы собираетесь посетить [домен].ru.tuna.am"\n'
             "   • И предупреждение о безопасности\n"
             "   • <b>Нажмите кнопку «Посетить»</b> для продолжения\n"
             "   • Это нормально — так работает туннель Tuna (безопасно)\n"
@@ -153,6 +155,7 @@ class BotHandlers:
 
             # Детальное логирование только если включено
             from src.utils import Config as BotConfig
+
             if BotConfig.VERBOSE_LOGGING:
                 logger.info(f"Received data from user {user_id}: {data}")
             else:
@@ -256,8 +259,11 @@ class BotHandlers:
 
                 # Используем таймаут из конфигурации (по умолчанию 5 минут)
                 from src.utils import Config as BotConfig
+
                 timeout = BotConfig.UPLOAD_TIMEOUT
-                response = requests.post(api_url, files=files, data=data, timeout=timeout)
+                response = requests.post(
+                    api_url, files=files, data=data, timeout=timeout
+                )
 
             # Удаляем временный файл
             try:
@@ -294,14 +300,14 @@ def register_handlers(dp, backend_url: str, bot_token: str):
 
     @router.callback_query(F.data == "help")
     async def help_callback_handler(callback: CallbackQuery):
-        await callback.answer()
         if callback.message:
+            # Если есть сообщение - отвечаем без параметров и отправляем help
+            await callback.answer()
             await BotHandlers.cmd_help(callback.message, backend_url)
         else:
             # Если сообщение отсутствует (inline message), используем callback.answer с текстом
-            # или отправляем через callback.from_user
             logger.warning("Help callback received without message (inline message)")
-            # Для inline сообщений можно использовать callback.answer с show_alert
+            # Для inline сообщений используем callback.answer с show_alert
             await callback.answer(
                 "Используйте команду /help в чате с ботом для получения инструкции",
                 show_alert=True,
