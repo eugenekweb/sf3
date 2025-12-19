@@ -91,14 +91,17 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
             mentions = results['mentions']
             channels = results['channels']
             total_participants = len(participants)
+            mentions_with_username = [m for m in mentions if m.get('username')]
+            mentions_count = len(mentions_with_username)
             channels_count = len(channels)
             
             logger.info(f"Chat {chat_name}: {total_participants} participants, {len(mentions)} mentions, {channels_count} channels")
             
-            if total_participants == 0:
+            # Проверка: есть ли хоть какие-то данные? (согласовано с combined mode)
+            if total_participants == 0 and mentions_count == 0 and channels_count == 0:
                 sender.send_message(
                     user_id,
-                    f"⚠️ В чате {chat_name} не найдено участников.",
+                    f"⚠️ В чате {chat_name} не найдено участников, упоминаний или каналов.",
                     parse_mode="Markdown"
                 )
                 time.sleep(0.5)
@@ -114,8 +117,7 @@ def process_and_send_results(file_data_list, user_id, combine_results=False):
                 safe_chat_name = sanitize_filename(chat_name, default="chat")
                 # Всегда добавляем дату в имя файла
                 filename = f"{safe_chat_name}_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
-                mentions_with_username = [m for m in mentions if m.get('username')]
-                mentions_count = len(mentions_with_username)
+                # mentions_with_username и mentions_count уже определены выше (строка 94-95)
                 caption = (
                     f"📊 Экспорт участников чата: {chat_name}\n\n"
                     f"✅ Обработка завершена!\n\n"
