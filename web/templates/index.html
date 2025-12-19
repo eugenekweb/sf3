@@ -382,7 +382,7 @@
 
 <script>
     // Инициализация Telegram WebApp (если доступен)
-    const debugMode = {% if debug_mode %}true{% else %}false{% endif %};
+    const debugMode = {{ debug_mode|tojson }};
     console.log('DEBUG MODE:', debugMode);
     let tg = null;
 
@@ -416,9 +416,9 @@
     let uploadStartTime = null;
     let progressTimeout = null;
 
-    // Централизованные настройки
-    const CHUNK_SIZE = 10485760; // Размер чанка в байтах
-    const MAX_RETRIES = 3; // Максимум попыток загрузки чанка/файла
+    // Централизованные настройки (из конфигурации сервера)
+    const CHUNK_SIZE = {{ chunk_size|default(10485760)|int }}; // Размер чанка в байтах
+    const MAX_RETRIES = {{ max_retries|default(3)|int }}; // Максимум попыток загрузки чанка/файла
 
     // ФУНКЦИИ АДАПТАЦИИ ТЕМЫ И КНОПКИ
 
@@ -683,7 +683,18 @@
             const hex = Array.from(array, v => v.toString(16).padStart(8, '0')).join('');
             return 'upload_' + hex;
         }
-        // Фолбэк для очень старых браузеров (менее безопасный)
+        // Если криптографически стойкий генератор недоступен, используем более безопасный фолбэк
+        // с предупреждением в консоль
+        console.warn('Secure random number generation is not available; using fallback method.');
+        // Используем комбинацию timestamp и случайных байт из crypto.getRandomValues если доступен
+        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+            const array = new Uint8Array(16);
+            window.crypto.getRandomValues(array);
+            const hex = Array.from(array, v => v.toString(16).padStart(2, '0')).join('');
+            return 'upload_' + Date.now().toString(36) + '_' + hex;
+        }
+        // Последний фолбэк для очень старых браузеров (менее безопасный)
+        console.error('Using insecure random number generation fallback. Consider updating your browser.');
         return 'upload_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
     }
 

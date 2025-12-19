@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import requests
+import aiohttp
 import tempfile
 from src.utils import Config as BotConfig
 
@@ -26,18 +27,19 @@ class BotHandlers:
         self.bot_token = bot_token
 
     @staticmethod
-    def _webapp_keyboard(
+    async def _webapp_keyboard(
         backend_url: str | None, webapp_disabled: bool = False
     ) -> InlineKeyboardMarkup | None:
         """Кнопка для открытия WebApp, если URL задан и веб-апп не отключен"""
         if not backend_url or webapp_disabled:
             return None
-        # Проверяем доступность URL (не блокируем, если недоступен, просто не показываем кнопку)
+        # Проверяем доступность URL асинхронно (не блокируем event loop)
         try:
-            response = requests.get(backend_url, timeout=2)
-            if response.status_code >= 400:
-                logger.warning(f"BACKEND_URL недоступен: {backend_url}")
-                return None
+            async with aiohttp.ClientSession() as session:
+                async with session.get(backend_url, timeout=aiohttp.ClientTimeout(total=2)) as response:
+                    if response.status >= 400:
+                        logger.warning(f"BACKEND_URL недоступен: {backend_url}")
+                        return None
         except Exception as e:
             logger.warning(f"BACKEND_URL недоступен: {backend_url}, ошибка: {e}")
             return None
@@ -79,7 +81,7 @@ class BotHandlers:
 
         # Учитываем настройки веб-апп
         webapp_disabled = BotConfig.WEBAPP_DISABLED
-        keyboard = BotHandlers._webapp_keyboard(backend_url, webapp_disabled)
+        keyboard = await BotHandlers._webapp_keyboard(backend_url, webapp_disabled)
         if keyboard:
             # Добавляем кнопку Помощь
             keyboard.inline_keyboard.append(
@@ -130,7 +132,7 @@ class BotHandlers:
         )
 
         webapp_disabled = BotConfig.WEBAPP_DISABLED
-        keyboard = BotHandlers._webapp_keyboard(backend_url, webapp_disabled)
+        keyboard = await BotHandlers._webapp_keyboard(backend_url, webapp_disabled)
         if keyboard:
             keyboard.inline_keyboard.append(
                 [InlineKeyboardButton(text="❓ Помощь", callback_data="help")]
@@ -184,11 +186,12 @@ class BotHandlers:
             if backend_url:
                 # При отклонении прямой загрузки всегда показываем кнопку WebApp,
                 # игнорируя webapp_disabled (иначе пользователь останется без способа загрузить файлы)
+                keyboard = await BotHandlers._webapp_keyboard(
+                    backend_url, webapp_disabled=False
+                )
                 await message.answer(
                     "❌ Приём файлов прямо в бота отключён, используйте WebApp.",
-                    reply_markup=BotHandlers._webapp_keyboard(
-                        backend_url, webapp_disabled=False
-                    ),
+                    reply_markup=keyboard,
                 )
             else:
                 await message.answer(
