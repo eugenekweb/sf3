@@ -13,7 +13,7 @@ class TelegramSender:
         self.bot_token = bot_token
         self.api_url = f"https://api.telegram.org/bot{bot_token}"
     
-    def send_message(self, chat_id: int, text: str, parse_mode: str = "Markdown") -> bool:
+    def send_message(self, chat_id: int, text: str, parse_mode: str = "HTML") -> bool:
         """
         Отправка текстового сообщения
         
@@ -33,7 +33,7 @@ class TelegramSender:
                 "parse_mode": parse_mode
             }
             
-            response = requests.post(url, json=data, timeout=config.UPLOAD_TIMEOUT)
+            response = requests.post(url, json=data, timeout=config.MESSAGE_TIMEOUT)
             
             if response.status_code == 200:
                 logger.info(f"Message sent to {chat_id}")
@@ -94,7 +94,7 @@ class TelegramSender:
         return self.send_message(chat_id, text, parse_mode="Markdown")
     
     def send_message_with_keyboard(self, chat_id: int, text: str, 
-                                   keyboard: dict, parse_mode: str = "Markdown") -> bool:
+                                   keyboard: dict, parse_mode: str = "HTML") -> bool:
         """
         Отправка текстового сообщения с inline клавиатурой
         
@@ -116,7 +116,7 @@ class TelegramSender:
                 "reply_markup": keyboard
             }
             
-            response = requests.post(url, json=data, timeout=config.UPLOAD_TIMEOUT)
+            response = requests.post(url, json=data, timeout=config.MESSAGE_TIMEOUT)
             
             if response.status_code == 200:
                 logger.info(f"Message with keyboard sent to {chat_id}")

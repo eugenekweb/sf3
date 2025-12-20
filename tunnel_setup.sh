@@ -61,13 +61,15 @@ fi
 # Обновляем токен в .env
 echo -e "${YELLOW}📝 Обновляю TUNA_TOKEN в $ENV_FILE${NC}"
 if grep -q "^TUNA_TOKEN=" "$ENV_FILE"; then
+    # Экранируем специальные символы для sed (|, &, \)
+    ESCAPED_TOKEN=$(echo "$TUNA_TOKEN" | sed 's/|/\\|/g; s/&/\\&/g; s/\\/\\\\/g')
     # Обновляем существующий токен
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        sed -i '' "s|^TUNA_TOKEN=.*|TUNA_TOKEN=$TUNA_TOKEN|" "$ENV_FILE"
+        sed -i '' "s|^TUNA_TOKEN=.*|TUNA_TOKEN=$ESCAPED_TOKEN|" "$ENV_FILE"
     else
         # Linux/Git Bash
-        sed -i "s|^TUNA_TOKEN=.*|TUNA_TOKEN=$TUNA_TOKEN|" "$ENV_FILE"
+        sed -i "s|^TUNA_TOKEN=.*|TUNA_TOKEN=$ESCAPED_TOKEN|" "$ENV_FILE"
     fi
 else
     # Добавляем новый токен
@@ -82,9 +84,6 @@ if ! grep -q "^BOT_TOKEN=" "$ENV_FILE" || grep -q "^BOT_TOKEN=$" "$ENV_FILE" || 
 fi
 
 echo -e "${YELLOW}📋 Tuna Tunnel:${NC}"
-echo -e "  ✅ Бесплатный"
-echo -e "  ✅ Простой в использовании"
-echo -e "  ✅ Работает через Docker"
 echo ""
 
 # Проверяем, есть ли сервис tuna в docker-compose.yml (не закомментирован)
@@ -101,7 +100,7 @@ fi
 echo -e "${YELLOW}🐳 Проверяю web сервер...${NC}"
 if ! docker ps | grep -q "web_server"; then
     echo -e "${YELLOW}🚀 Запускаю web сервер...${NC}"
-    docker-compose up -d web
+    docker-compose up -d web --build
     echo -e "${YELLOW}⏳ Жду запуска web сервера (5 секунд)...${NC}"
     sleep 5
 else
@@ -138,7 +137,7 @@ if [ "$USE_DOCKER_COMPOSE" = true ]; then
     }
     
     # Запускаем через docker-compose
-    docker-compose up -d tuna || {
+    docker-compose up -d tuna --build || {
         echo -e "${RED}❌ Не удалось запустить туннель через docker-compose${NC}"
         exit 1
     }
@@ -332,7 +331,7 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
-docker-compose up -d bot
+docker-compose up -d bot --build
 
 echo ""
 echo -e "${GREEN}=== ВСЁ ГОТОВО ===${NC}"

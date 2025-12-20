@@ -58,8 +58,8 @@ class ChatParser:
                 )
 
             return {
-                "name": data.get("name", "Неизвестный чат"),
-                "type": data.get("type", "unknown"),
+                "name": str(data.get("name", "Unknown")).strip(),
+                "type": str(data.get("type", "unknown")).strip(),
                 "id": data.get("id"),
                 "messages": data.get("messages", []),
             }
@@ -160,8 +160,10 @@ class ChatParser:
         """
         Извлечение каналов из сообщений
         Кейс 4: from + from_id (содержит "channel") + непустой text
+        Кейс 5: forwarded_from + forwarded_from_id (содержит "channel") - для пересланных сообщений
         """
         for msg in messages:
+            # Кейс 4: Обычные сообщения от каналов
             from_id = msg.get("from_id")
             from_name = msg.get("from")
             text = msg.get("text", "")
@@ -198,6 +200,26 @@ class ChatParser:
                             "channel_id": from_id,
                             "name": from_name,
                         }
+            
+            # Кейс 5: Пересланные сообщения из каналов
+            # Для пересланных сообщений проверка непустого text необязательна,
+            # так как факт пересылки уже указывает на канал
+            forwarded_from_id = msg.get("forwarded_from_id")
+            forwarded_from_name = msg.get("forwarded_from")
+            
+            if (
+                forwarded_from_id
+                and forwarded_from_name
+                and isinstance(forwarded_from_id, str)
+                and "channel" in forwarded_from_id.lower()
+            ):
+                # Сохраняем канал из пересланного сообщения
+                # Дубликаты обрабатываются проверкой if forwarded_from_id not in self.channels
+                if forwarded_from_id not in self.channels:
+                    self.channels[forwarded_from_id] = {
+                        "channel_id": forwarded_from_id,
+                        "name": forwarded_from_name,
+                    }
 
 
     def process_messages(self, messages: List[Dict]) -> None:
@@ -232,44 +254,64 @@ class FileGrouper:
     def group_files(file_data_list: List[Dict]) -> Dict[Tuple, List[Dict]]:
         """
         Группировка файлов по заголовку чата.
-        Приоритет: id (если есть), иначе (name, type).
-        Это позволяет группировать файлы одного чата, даже если name отличается или отсутствует.
-
-        Args:
-            file_data_list: Список словарей с данными файлов {'name', 'type', 'id', 'messages', 'filepath'}
-
-        Returns:
-            Словарь: (name, type, id) -> список файлов этого чата
+        Пытается объединить файлы одного чата, даже если в части файлов отсутствует ID.
         """
-        groups = defaultdict(list)
-
+        # 1. Группируем файлы по ID (если есть) и по (name, type) (если нет ID)
+        id_groups = defaultdict(list) # (type, id) -> [files]
+        name_groups = defaultdict(list) # (name, type) -> [files]
+        
         for file_data in file_data_list:
             chat_id = file_data.get("id")
-            chat_type = file_data.get("type")
-            chat_name = file_data.get("name")
+            chat_type = file_data.get("type") or "unknown"
+            chat_name = file_data.get("name") or "Unknown"
             
             if chat_id:
-                key = (None, chat_type, chat_id)
+                id_groups[(chat_type, chat_id)].append(file_data)
             else:
-                key = (chat_name, chat_type, None)
+                name_groups[(chat_name, chat_type)].append(file_data)
+        
+        # 2. Определяем лучшее имя для каждой ID группы
+        id_to_name = {}
+        for key, files in id_groups.items():
+            best_name = "Unknown"
+            for f in files:
+                n = f.get("name")
+                if n and n != "Unknown":
+                    best_name = n
+                    break
+            id_to_name[key] = best_name
             
-            groups[key].append(file_data)
-
+        # 3. Формируем финальный результат, пытаясь сопоставить name_groups с id_groups
         result = {}
-        for key, files in groups.items():
-            final_name = None
-            for file_data in files:
-                name = file_data.get("name")
-                if name and name != "Неизвестный чат":
-                    final_name = name
+        
+        # Сначала добавляем все ID группы
+        for key, files in id_groups.items():
+            chat_type, chat_id = key
+            final_key = (id_to_name[key], chat_type, chat_id)
+            result[final_key] = files
+            
+        # Затем обрабатываем name_groups
+        for key, files in name_groups.items():
+            chat_name, chat_type = key
+            
+            # Ищем, нет ли уже ID группы с таким именем и типом
+            matched_id_key = None
+            for id_key, name in id_to_name.items():
+                if name == chat_name and id_key[0] == chat_type:
+                    matched_id_key = (name, id_key[0], id_key[1])
                     break
             
-            if not final_name and files:
-                final_name = files[0].get("name") or "Неизвестный чат"
-            
-            final_key = (final_name, key[1], key[2])
-            result[final_key] = files
-
+            if matched_id_key:
+                # Нашли группу с ID, объединяем с ней
+                result[matched_id_key].extend(files)
+            else:
+                # Не нашли, создаем новую группу без ID
+                final_key = (chat_name, chat_type, None)
+                if final_key in result:
+                    result[final_key].extend(files)
+                else:
+                    result[final_key] = files
+                    
         return result
 
     @staticmethod

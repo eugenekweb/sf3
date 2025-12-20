@@ -10,7 +10,6 @@ from aiogram.filters import Command
 import json
 import logging
 import os
-import requests
 import aiohttp
 import tempfile
 from src.utils import Config as BotConfig
@@ -36,7 +35,9 @@ class BotHandlers:
         # Проверяем доступность URL асинхронно (не блокируем event loop)
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(backend_url, timeout=aiohttp.ClientTimeout(total=2)) as response:
+                async with session.get(
+                    backend_url, timeout=aiohttp.ClientTimeout(total=2)
+                ) as response:
                     if response.status >= 400:
                         logger.warning(f"BACKEND_URL недоступен: {backend_url}")
                         return None
@@ -70,7 +71,7 @@ class BotHandlers:
             "1) Экспортируй историю чата в JSON\n"
             "2) Нажми кнопку ниже «Открыть WebApp»\n"
             "3) <b>При первом открытии появится страница Tuna с предупреждением:</b>\n"
-            "   • На странице будет текст: \"Вы собираетесь посетить [домен].ru.tuna.am\"\n"
+            '   • На странице будет текст: "Вы собираетесь посетить [домен].ru.tuna.am"\n'
             "   • И предупреждение о безопасности\n"
             "   • <b>Нажми кнопку «Посетить»</b> для продолжения\n"
             "   • Это нормально — так работает туннель Tuna (безопасно)\n"
@@ -110,7 +111,7 @@ class BotHandlers:
             "🔹 <b>Шаг 2: Загрузка в бота</b>\n"
             "1. Нажмите кнопку Открыть WebApp\n"
             "2. При первом открытии появится страница сервиса Tuna с предупреждением:\n"
-            "   • На странице будет текст: \"Вы собираетесь посетить [домен].ru.tuna.am\"\n"
+            '   • На странице будет текст: "Вы собираетесь посетить [домен].ru.tuna.am"\n'
             "   • И предупреждение о безопасности\n"
             "   • <b>Нажмите кнопку «Посетить»</b> для продолжения\n"
             "   • Это нормально — так работает туннель Tuna (безопасно)\n"
@@ -119,7 +120,7 @@ class BotHandlers:
             "5. Нажмите Загрузить и обработать\n\n"
             "🔹 <b>Шаг 3: Получение результата</b>\n"
             "• Если участников меньше 50: получите текстовый список\n"
-            "• Если участников 51 и больше: получите Excel файл\n\n"
+            "• Если участников 50 и больше: получите Excel файл\n\n"
             "📋 <b>Требования к файлам:</b>\n"
             "• Формат: только JSON\n"
             "• Кодировка: UTF-8\n"
@@ -153,6 +154,7 @@ class BotHandlers:
 
             # Детальное логирование только если включено
             from src.utils import Config as BotConfig
+
             if BotConfig.VERBOSE_LOGGING:
                 logger.info(f"Received data from user {user_id}: {data}")
             else:
@@ -193,17 +195,32 @@ class BotHandlers:
                     "❌ Приём файлов прямо в бота отключён, используйте WebApp.",
                     reply_markup=keyboard,
                 )
+                return
             else:
                 await message.answer(
                     "⚠️ BACKEND_URL не настроен. Укажите публичный HTTPS в переменной BACKEND_URL."
                 )
+                return
         elif webapp_disabled:
             # Только напрямую в бота (старый режим)
             await BotHandlers._process_document_directly(message, bot_token)
         else:
-            # Оба метода работают, но если HTTPS недоступен - используем прямой режим
-            # Пользователь уже отправил файл - обрабатываем напрямую (без промежуточных сообщений)
-            await BotHandlers._process_document_directly(message, bot_token)
+            # Оба метода работают
+            # Проверяем размер файла: если > 20 МБ и backend_url доступен - предлагаем WebApp
+            file_size = message.document.file_size if message.document else None
+            if backend_url and file_size and file_size > 20 * 1024 * 1024:
+                # Файл слишком большой для прямой загрузки, предлагаем WebApp
+                keyboard = await BotHandlers._webapp_keyboard(backend_url, webapp_disabled=False)
+                await message.answer(
+                    f"⚠️ Файл слишком большой ({file_size / 1024 / 1024:.1f} МБ). "
+                    f"Telegram API ограничивает прямую загрузку до 20 МБ.\n\n"
+                    f"Используйте WebApp для загрузки больших файлов:",
+                    reply_markup=keyboard,
+                )
+            else:
+                # Файл подходит для прямой загрузки или backend_url недоступен
+                # Обрабатываем напрямую (с проверкой размера внутри функции)
+                await BotHandlers._process_document_directly(message, bot_token)
 
     @staticmethod
     async def _process_document_directly(message: Message, bot_token: str):
@@ -239,10 +256,10 @@ class BotHandlers:
             bot = message.bot
             file = await bot.get_file(message.document.file_id)
 
-            # Сохраняем во временный файл
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
-            await bot.download_file(file.file_path, temp_file.name)
-            temp_file.close()
+            # Создаем временный файл без открытого дескриптора (для совместимости с Windows)
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".json")
+            os.close(temp_fd)  # Закрываем дескриптор сразу после создания
+            await bot.download_file(file.file_path, temp_path)
 
             user_id = message.from_user.id
 
@@ -250,27 +267,42 @@ class BotHandlers:
             # Используем внутренний Docker URL
             api_url = os.getenv("WEB_API_URL", "http://web:5000/api/upload")
 
-            with open(temp_file.name, "rb") as f:
-                files = {"files": (message.document.file_name, f, "application/json")}
-                data = {"user_id": str(user_id)}
+            # Используем таймаут из конфигурации (по умолчанию 5 минут)
+            from src.utils import Config as BotConfig
 
-                # Используем таймаут из конфигурации (по умолчанию 5 минут)
-                from src.utils import Config as BotConfig
-                timeout = BotConfig.UPLOAD_TIMEOUT
-                response = requests.post(api_url, files=files, data=data, timeout=timeout)
+            timeout = aiohttp.ClientTimeout(total=BotConfig.UPLOAD_TIMEOUT)
+            
+            # Читаем файл в память для передачи через aiohttp
+            with open(temp_path, "rb") as f:
+                file_content = f.read()
+            
+            # Используем aiohttp для асинхронной загрузки файла
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                form_data = aiohttp.FormData()
+                # Не указываем content_type - aiohttp/Flask автоматически определят тип файла
+                # Указание 'application/json' мешает Flask распознать поле как файл в request.files
+                form_data.add_field('files', file_content, filename=message.document.file_name)
+                form_data.add_field('user_id', str(user_id))
+                
+                async with session.post(api_url, data=form_data) as response:
+                    response_status = response.status
+                    response_content = await response.read()
 
             # Удаляем временный файл
             try:
-                os.unlink(temp_file.name)
+                os.unlink(temp_path)
             except OSError as e:
-                logger.warning(f"Could not delete temp file {temp_file.name}: {e}")
+                logger.warning(f"Could not delete temp file {temp_path}: {e}")
 
             # Отправляем только один ответ - результат или ошибку
-            if response.status_code == 200:
+            if response_status == 200:
                 # Результат уже отправлен через TelegramSender в app.py, не дублируем
                 pass
             else:
-                error_data = response.json() if response.content else {}
+                try:
+                    error_data = json.loads(response_content.decode('utf-8')) if response_content else {}
+                except:
+                    error_data = {}
                 error_msg = error_data.get("error", "Неизвестная ошибка при обработке")
                 await message.answer(f"❌ Ошибка: {error_msg}")
 
@@ -294,14 +326,14 @@ def register_handlers(dp, backend_url: str, bot_token: str):
 
     @router.callback_query(F.data == "help")
     async def help_callback_handler(callback: CallbackQuery):
-        await callback.answer()
         if callback.message:
+            # Если есть сообщение - отвечаем без параметров и отправляем help
+            await callback.answer()
             await BotHandlers.cmd_help(callback.message, backend_url)
         else:
             # Если сообщение отсутствует (inline message), используем callback.answer с текстом
-            # или отправляем через callback.from_user
             logger.warning("Help callback received without message (inline message)")
-            # Для inline сообщений можно использовать callback.answer с show_alert
+            # Для inline сообщений используем callback.answer с show_alert
             await callback.answer(
                 "Используйте команду /help в чате с ботом для получения инструкции",
                 show_alert=True,

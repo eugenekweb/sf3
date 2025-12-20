@@ -5,13 +5,26 @@ import os
 import logging
 import shutil
 import json
+from datetime import datetime, timedelta
 from processors import ChatParser, FileGrouper
 from telegram_sender import TelegramSender
-from file_utils import validate_user_id
+from file_utils import validate_user_id, validate_upload_id
 from result_processor import process_and_send_results, send_completion_message, send_keyboard_after_processing
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Настройка логирования: интегрируемся с Gunicorn или настраиваем дефолтный вывод
+if __name__ != '__main__':
+    # Если запущены под Gunicorn, используем его настройки для всех логгеров
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    root_logger = logging.getLogger()
+    # Убираем лишние обработчики, если они уже есть, чтобы не было двойного логирования
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    root_logger.handlers = gunicorn_logger.handlers
+    root_logger.setLevel(gunicorn_logger.level)
+    logger = logging.getLogger(__name__)
+else:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
 
 app = Flask(__name__, template_folder='templates')
 app.config.from_object(config)
@@ -20,6 +33,48 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 if not os.path.exists(config.UPLOAD_FOLDER):
     os.makedirs(config.UPLOAD_FOLDER)
+
+
+def _cleanup_old_chunks():
+    """
+    Очистка старых директорий с чанками, которые не были собраны в файлы.
+    Удаляет директории старше CHUNK_EXPIRY_HOURS часов.
+    """
+    chunks_base_dir = os.path.join(config.UPLOAD_FOLDER, 'chunks')
+    if not os.path.exists(chunks_base_dir):
+        return
+    
+    expiry_time = datetime.now() - timedelta(hours=config.CHUNK_EXPIRY_HOURS)
+    deleted_count = 0
+    
+    try:
+        for upload_id_dir in os.listdir(chunks_base_dir):
+            upload_id_path = os.path.join(chunks_base_dir, upload_id_dir)
+            if not os.path.isdir(upload_id_path):
+                continue
+            
+            # Проверяем время модификации директории или метаданных
+            metadata_path = os.path.join(upload_id_path, 'metadata.json')
+            if os.path.exists(metadata_path):
+                # Используем время модификации метаданных
+                mtime = datetime.fromtimestamp(os.path.getmtime(metadata_path))
+            else:
+                # Используем время модификации директории
+                mtime = datetime.fromtimestamp(os.path.getmtime(upload_id_path))
+            
+            if mtime < expiry_time:
+                try:
+                    shutil.rmtree(upload_id_path)
+                    deleted_count += 1
+                    logger.info(f"Deleted old chunks directory: {upload_id_path} (age: {datetime.now() - mtime})")
+                except Exception as e:
+                    logger.error(f"Error deleting old chunks directory {upload_id_path}: {e}")
+        
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} old chunk directory(ies)")
+    except Exception as e:
+        logger.error(f"Error during chunks cleanup: {e}")
+
 
 @app.route('/')
 def index():
@@ -69,6 +124,9 @@ def upload():
             filename = secure_filename(file.filename)
             temp_path = os.path.join(config.UPLOAD_FOLDER, f"temp_{os.urandom(8).hex()}_{filename}")
             
+            # Добавляем путь в список для очистки ДО операций, которые могут упасть
+            temp_files.append(temp_path)
+            
             try:
                 with open(temp_path, 'wb') as f:
                     while True:
@@ -78,7 +136,6 @@ def upload():
                         f.write(chunk)
                 
                 logger.info(f"File saved: {filename}, size: {os.path.getsize(temp_path) / 1024 / 1024:.2f} MB")
-                temp_files.append(temp_path)
             except Exception as save_error:
                 logger.error(f"Error saving file {filename}: {save_error}")
                 failed_files.append({"name": filename, "error": f"Ошибка сохранения файла: {str(save_error)}"})
@@ -136,13 +193,17 @@ def upload():
         
         # Обработка и отправка результатов
         result = process_and_send_results(file_data_list, user_id, combine_results)
+        if "error" in result:
+            logger.error(f"Error in process_and_send_results: {result['error']}")
+            return jsonify(result), 500
+        
         groups_count = result.get("groups_count", 0)
         
         # Отправка сообщения о завершении
         total_files_processed = len(file_data_list)
         total_files_uploaded = len(files)
         failed_count = len(failed_files) if 'failed_files' in locals() else 0
-        send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count)
+        send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count, error_message_sent)
         
         # Отправка клавиатуры
         send_keyboard_after_processing(user_id)
@@ -205,25 +266,45 @@ def upload_chunk():
         
         logger.info(f"Chunk file received: {chunk_file.filename}, size: {chunk_file.content_length} bytes")
         
+        # Валидация upload_id для предотвращения path traversal
+        is_valid, sanitized_upload_id, error_msg = validate_upload_id(upload_id)
+        if not is_valid:
+            logger.error(f"Invalid upload_id: {error_msg}")
+            return jsonify({"success": False, "error": f"Invalid upload_id: {error_msg}"}), 400
+        upload_id = sanitized_upload_id
+        
         # Создаем директорию для чанков этого файла
         chunks_dir = os.path.join(config.UPLOAD_FOLDER, 'chunks', upload_id)
         os.makedirs(chunks_dir, exist_ok=True)
+        
+        # Очистка старых чанков при загрузке нового
+        _cleanup_old_chunks()
         
         # Сохраняем чанк
         chunk_path = os.path.join(chunks_dir, f'chunk_{chunk_index}.part')
         chunk_file.save(chunk_path)
         
-        # Сохраняем метаданные файла (только при первом чанке)
-        if chunk_index == 0:
+        # Сохраняем метаданные файла при первом запросе (любом чанке)
+        # Используем атомарную проверку и создание файла для предотвращения Race Condition
+        metadata_path = os.path.join(chunks_dir, 'metadata.json')
+        if not os.path.exists(metadata_path):
             metadata = {
                 'filename': filename,
                 'file_size': file_size,
                 'total_chunks': total_chunks,
                 'user_id': user_id
             }
-            metadata_path = os.path.join(chunks_dir, 'metadata.json')
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f)
+            try:
+                # Пытаемся создать файл атомарно. Если он уже существует, os.open выбросит FileExistsError
+                fd = os.open(metadata_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f)
+                logger.info(f"Metadata created for upload_id {upload_id} on chunk {chunk_index}")
+            except FileExistsError:
+                # Метаданные уже созданы другим параллельным запросом, это нормально
+                logger.debug(f"Metadata already exists for upload_id {upload_id}")
+            except Exception as e:
+                logger.error(f"Error creating metadata for {upload_id}: {e}")
         
         logger.info(f"Chunk {chunk_index + 1}/{total_chunks} saved for {filename} (upload_id: {upload_id})")
         
@@ -263,6 +344,14 @@ def complete_upload():
         failed_files = []
         
         for upload_id in upload_ids:
+            # Валидация upload_id для предотвращения path traversal
+            is_valid, sanitized_upload_id, error_msg = validate_upload_id(upload_id)
+            if not is_valid:
+                logger.error(f"Invalid upload_id: {error_msg}")
+                failed_files.append({"name": upload_id, "error": f"Неверный идентификатор загрузки: {error_msg}"})
+                continue
+            upload_id = sanitized_upload_id
+            
             chunks_dir = os.path.join(config.UPLOAD_FOLDER, 'chunks', upload_id)
             
             if not os.path.exists(chunks_dir):
@@ -275,16 +364,66 @@ def complete_upload():
                 with open(metadata_path, 'r', encoding='utf-8') as f:
                     metadata = json.load(f)
                 filename = metadata.get('filename', f"{upload_id}.json")
+                
+                # Проверка принадлежности upload_id пользователю (защита от IDOR)
+                metadata_user_id = metadata.get('user_id')
+                # Явно проверяем наличие user_id в метаданных (отклоняем, если отсутствует)
+                if metadata_user_id is None:
+                    logger.warning(
+                        f"Missing user_id in metadata for upload_id {upload_id}. "
+                        f"Rejecting for security."
+                    )
+                    failed_files.append({
+                        "name": filename,
+                        "error": "Метаданные файла повреждены: отсутствует идентификатор пользователя"
+                    })
+                    continue
+                # Проверяем соответствие user_id
+                if str(metadata_user_id) != str(user_id):
+                    logger.warning(
+                        f"User ID mismatch for upload_id {upload_id}: "
+                        f"requested {user_id}, but metadata has {metadata_user_id}"
+                    )
+                    failed_files.append({
+                        "name": filename,
+                        "error": "Доступ запрещен: файл принадлежит другому пользователю"
+                    })
+                    continue
             else:
                 filename = f"{upload_id}.json"
+                # Если metadata.json отсутствует, пропускаем файл для безопасности
+                logger.warning(f"Metadata not found for upload_id {upload_id}, skipping for security")
+                failed_files.append({
+                    "name": filename,
+                    "error": "Метаданные файла не найдены"
+                })
+                continue
             
             chunk_files = []
             for f in os.listdir(chunks_dir):
                 if f.startswith('chunk_') and f.endswith('.part'):
-                    chunk_index = int(f.replace('chunk_', '').replace('.part', ''))
-                    chunk_files.append((chunk_index, os.path.join(chunks_dir, f)))
+                    try:
+                        chunk_index = int(f.replace('chunk_', '').replace('.part', ''))
+                        chunk_files.append((chunk_index, os.path.join(chunks_dir, f)))
+                    except ValueError:
+                        logger.warning(f"Skipping malformed chunk file: {f} in {chunks_dir}")
+                        continue
             
             chunk_files.sort(key=lambda x: x[0])
+            
+            # Проверка целостности: все ли чанки на месте?
+            total_chunks = metadata.get('total_chunks')
+            if total_chunks is None:
+                error_msg = "Метаданные повреждены: отсутствует информация о количестве частей."
+                logger.error(f"{error_msg} (upload_id: {upload_id})")
+                failed_files.append({"name": filename, "error": error_msg})
+                continue
+
+            if len(chunk_files) != total_chunks:
+                error_msg = f"Файл загружен не полностью: получено {len(chunk_files)} частей из {total_chunks}."
+                logger.error(f"{error_msg} для {filename} (upload_id: {upload_id})")
+                failed_files.append({"name": filename, "error": error_msg})
+                continue
             
             if not chunk_files:
                 logger.error(f"No chunks found in {chunks_dir}")
@@ -293,15 +432,29 @@ def complete_upload():
             
             temp_path = os.path.join(config.UPLOAD_FOLDER, f"temp_{os.urandom(8).hex()}_{secure_filename(filename)}")
             
+            # Добавляем ресурсы в списки для очистки ДО операций, которые могут упасть
+            temp_files.append(temp_path)
+            chunks_dirs.append(chunks_dir)
+            
             try:
                 with open(temp_path, 'wb') as outfile:
                     for chunk_index, chunk_path in chunk_files:
                         with open(chunk_path, 'rb') as chunk_file:
                             shutil.copyfileobj(chunk_file, outfile)
                 
-                logger.info(f"File assembled: {filename}, size: {os.path.getsize(temp_path) / 1024 / 1024:.2f} MB")
-                temp_files.append(temp_path)
-                chunks_dirs.append(chunks_dir)
+                # Проверка размера собранного файла против метаданных
+                actual_size = os.path.getsize(temp_path)
+                expected_size = metadata.get('file_size')
+                if expected_size is not None and actual_size != expected_size:
+                    error_msg = (
+                        f"Несоответствие размера файла: ожидалось {expected_size} байт, "
+                        f"получено {actual_size} байт. Файл может быть поврежден или неполон."
+                    )
+                    logger.error(f"File size mismatch for {filename}: {error_msg}")
+                    failed_files.append({"name": filename, "error": error_msg})
+                    continue
+                
+                logger.info(f"File assembled: {filename}, size: {actual_size / 1024 / 1024:.2f} MB")
                 
                 try:
                     file_data = parser.parse_file(temp_path)
@@ -361,13 +514,17 @@ def complete_upload():
         
         # Обработка и отправка результатов
         result = process_and_send_results(file_data_list, user_id, combine_results)
+        if "error" in result:
+            logger.error(f"Error in process_and_send_results: {result['error']}")
+            return jsonify({"success": False, **result}), 500
+        
         groups_count = result.get("groups_count", 0)
         
         # Отправка сообщения о завершении
         total_files_processed = len(file_data_list)
         total_files_uploaded = len(upload_ids)
         failed_count = len(failed_files) if 'failed_files' in locals() else 0
-        send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count)
+        send_completion_message(user_id, total_files_processed, total_files_uploaded, failed_count, error_message_sent)
         
         # Отправка клавиатуры
         send_keyboard_after_processing(user_id)

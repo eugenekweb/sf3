@@ -324,20 +324,6 @@
     <h1>📤 Загрузка файлов экспорта</h1>
     <div class="user-info" id="userInfo">Загрузка...</div>
 
-    {% if debug_mode %}
-    <div class="debug-mode" id="debugMode"
-         style="background: var(--tg-bg); border: 1px solid var(--tg-hint); padding: 12px; margin: 16px 0; border-radius: 6px;">
-        <strong>🐛 DEBUG MODE</strong><br>
-        <label for="debugUserId" style="display: block; margin-top: 8px;">User ID (для тестирования):</label>
-        <input type="text" id="debugUserId" placeholder="Введите User ID"
-               style="width: 100%; padding: 8px; margin-top: 4px; border: 1px solid var(--tg-hint); border-radius: 4px; background: var(--tg-secondary-bg); color: var(--tg-text);">
-        <button id="debugSetUserId"
-                style="margin-top: 8px; padding: 6px 12px; background: var(--tg-link); border: none; border-radius: 4px; cursor: pointer; color: var(--tg-button-text);">
-            Установить User ID
-        </button>
-    </div>
-    {% endif %}
-
     <div class="info-text">
         📋 <b>Требования:</b><br>
         • Только JSON файлы<br>
@@ -399,7 +385,6 @@
     const filesList = document.getElementById('filesList');
     const combineRow = document.getElementById('combineRow');
     const combineCheckbox = document.getElementById('combineCheckbox');
-    // const submitBtn = document.getElementById('submitBtn'); // Удалена, используется tg.MainButton
     const loading = document.getElementById('loading');
     const userInfo = document.getElementById('userInfo');
     const errorEl = document.getElementById('error');
@@ -439,6 +424,14 @@
             // Кнопка
             root.style.setProperty('--tg-button', params.button_color || '#0088cc');
             root.style.setProperty('--tg-button-text', params.button_text_color || 'white');
+
+            // Синхронизируем Главную кнопку Telegram с темой
+            if (tg.MainButton) {
+                tg.MainButton.setParams({
+                    color: params.button_color || '#0088cc',
+                    text_color: params.button_text_color || 'white'
+                });
+            }
 
             // Тень (адаптация для темной темы)
             if (tg.colorScheme === 'dark') {
@@ -488,8 +481,7 @@
         overlay.style.display = 'none';
         progressContainer.style.display = 'none';
         loading.style.display = 'none';
-
-        // Сброс состояния загрузки
+        
         updateMainButtonState(); // Сбросит MainButton в состояние "Готов" или скроет
 
         // Отправляем данные об ошибке в Telegram
@@ -521,42 +513,21 @@
 
     function initUser() {
         // Получаем данные пользователя из Telegram WebApp API
-        const user = (typeof tg !== 'undefined' && tg?.initDataUnsafe?.user) ? tg.initDataUnsafe.user : null;
+        let user = null;
+        if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            user = tg.initDataUnsafe.user;
+        }
 
         if (user) {
             userId = user.id.toString();
             userName = user.first_name || user.username || 'Пользователь';
             userInfo.textContent = `👤 ${userName} (ID: ${userId})`;
-        } else if (debugMode) {
-            // В режиме DEBUG разрешаем работу без Telegram
-            console.log('DEBUG MODE: Telegram WebApp not available, using manual User ID');
-            userInfo.textContent = '🐛 DEBUG MODE: Введите User ID вручную';
-
-            // Логика для дебаг-поля
-            const debugUserIdInput = document.getElementById('debugUserId');
-            const debugSetUserIdBtn = document.getElementById('debugSetUserId');
-
-            if (debugSetUserIdBtn && debugUserIdInput) {
-                debugSetUserIdBtn.addEventListener('click', () => {
-                    const manualUserId = debugUserIdInput.value.trim();
-                    if (manualUserId && !isNaN(manualUserId)) {
-                        userId = manualUserId;
-                        userInfo.textContent = `🐛 DEBUG: User ID установлен вручную (ID: ${userId})`;
-                        updateMainButtonState();
-                    } else {
-                        showError('Введите корректный User ID (число)');
-                    }
-                });
-                // В DEBUG-режиме не устанавливаем тестовый ID автоматически,
-                // чтобы избежать случайного использования тестовых данных в продакшене.
-                // При необходимости введите User ID вручную (например, 123456789) и нажмите кнопку.
-            }
         } else {
-            userInfo.textContent = '⚠️ Не удалось получить ID пользователя. Откройте приложение через Telegram.';
+            userInfo.textContent = '⚠️ Откройте приложение через Telegram';
             uploadZone.style.pointerEvents = 'none';
             uploadZone.style.opacity = '0.5';
         }
-        updateMainButtonState(); // Инициализация MainButton
+        updateMainButtonState();
     }
 
     function validateFile(file) {
@@ -683,18 +654,8 @@
             const hex = Array.from(array, v => v.toString(16).padStart(8, '0')).join('');
             return 'upload_' + hex;
         }
-        // Если криптографически стойкий генератор недоступен, используем более безопасный фолбэк
-        // с предупреждением в консоль
+        // Если криптографически стойкий генератор недоступен, используем фолбэк
         console.warn('Secure random number generation is not available; using fallback method.');
-        // Используем комбинацию timestamp и случайных байт из crypto.getRandomValues если доступен
-        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
-            const array = new Uint8Array(16);
-            window.crypto.getRandomValues(array);
-            const hex = Array.from(array, v => v.toString(16).padStart(2, '0')).join('');
-            return 'upload_' + Date.now().toString(36) + '_' + hex;
-        }
-        // Последний фолбэк для очень старых браузеров (менее безопасный)
-        console.error('Using insecure random number generation fallback. Consider updating your browser.');
         return 'upload_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
     }
 
@@ -828,11 +789,21 @@
             return;
         }
 
+        const hasMainButton = typeof tg !== 'undefined' && tg?.MainButton;
+        const showFallbackButton = debugMode && !hasMainButton;
+
         // Блокируем кнопку и показываем лоадер
-        if (typeof tg !== 'undefined' && tg?.MainButton) {
+        if (hasMainButton) {
             tg.MainButton.showProgress();
             tg.MainButton.setText('Подготовка...');
         }
+        
+        // Отключаем fallback кнопку во время загрузки
+        if (showFallbackButton && fallbackSubmitBtn) {
+            fallbackSubmitBtn.disabled = true;
+            fallbackSubmitBtn.textContent = '⏳ Подготовка...';
+        }
+        
         loading.style.display = 'block';
         errorEl.style.display = 'none';
         overlay.style.display = 'block';
@@ -893,9 +864,14 @@
             }
 
             // Все чанки загружены, вызываем завершение загрузки и обработку
-            if (typeof tg !== 'undefined' && tg?.MainButton) {
+            if (hasMainButton) {
                 tg.MainButton.setText('Обработка...');
                 tg.MainButton.showProgress();
+            }
+            
+            // Обновляем состояние fallback кнопки
+            if (showFallbackButton && fallbackSubmitBtn) {
+                fallbackSubmitBtn.textContent = '⏳ Обработка...';
             }
 
             const formData = new FormData();
@@ -944,9 +920,14 @@
                         renderFiles();
                         fileInput.value = '';
 
-                        if (typeof tg !== 'undefined' && tg?.MainButton) {
+                        if (hasMainButton) {
                             tg.MainButton.hide();
                             tg.MainButton.hideProgress();
+                        }
+                        
+                        // Обновляем состояние fallback кнопки
+                        if (showFallbackButton && fallbackSubmitBtn) {
+                            fallbackSubmitBtn.style.display = 'none';
                         }
 
                         if (typeof tg !== 'undefined' && tg && tg.close) {
@@ -1000,11 +981,7 @@
             if (tg.MainButton) {
                 // Привязываем основное действие к Главной кнопке
                 tg.MainButton.onClick(startChunkedUpload);
-                // Устанавливаем базовые параметры
-                tg.MainButton.setParams({
-                    text_color: 'var(--tg-button-text)',
-                    color: 'var(--tg-button)'
-                });
+                
                 // Сначала скрываем, пока нет файлов
                 tg.MainButton.hide();
             }

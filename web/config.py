@@ -17,12 +17,17 @@ class Config:
     UPLOAD_TIMEOUT = int(os.getenv("UPLOAD_TIMEOUT", "300"))  # 5 минут
     PROCESSING_TIMEOUT = int(os.getenv("PROCESSING_TIMEOUT", "1800"))  # 30 минут
     CHUNK_TIMEOUT = int(os.getenv("CHUNK_TIMEOUT", "300"))  # 5 минут на чанк
+    MESSAGE_TIMEOUT = int(os.getenv("MESSAGE_TIMEOUT", "30"))  # 30 секунд для текстовых сообщений
+    CHUNK_EXPIRY_HOURS = int(os.getenv("CHUNK_EXPIRY_HOURS", "24"))  # Время жизни чанков в часах
 
     # Пороги и лимиты
     EXCEL_THRESHOLD = int(os.getenv("EXCEL_THRESHOLD", "50"))  # Порог для Excel/текст
     MAX_FILES = int(os.getenv("MAX_FILES", "10"))
     # Размер чанка в байтах (10 МБ)
     CHUNK_SIZE_ENV = os.getenv("CHUNK_SIZE", str(10 * 1024 * 1024))
+    # Обрабатываем пустую строку: если CHUNK_SIZE установлен в "", используем значение по умолчанию
+    if not CHUNK_SIZE_ENV or CHUNK_SIZE_ENV.strip() == "":
+        CHUNK_SIZE_ENV = str(10 * 1024 * 1024)
     try:
         CHUNK_SIZE = int(CHUNK_SIZE_ENV)
     except (TypeError, ValueError):
