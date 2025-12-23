@@ -431,27 +431,41 @@
     // Применяет цвета темы Telegram к CSS-переменным.
 
     function applyTheme() {
+        // Проверяем наличие объекта Telegram и параметров темы
         if (typeof tg !== 'undefined' && tg?.themeParams) {
             const root = document.documentElement;
             const params = tg.themeParams;
 
-            // Основные цвета
+            // CSS-переменные (для элементов внутри Web App)
             root.style.setProperty('--tg-bg', params.bg_color || '#f5f5f5');
-            root.style.setProperty('--tg-secondary-bg', params.secondary_bg_color || 'white');
-            root.style.setProperty('--tg-text', params.text_color || '#333');
-            root.style.setProperty('--tg-hint', params.hint_color || '#666');
+            root.style.setProperty('--tg-secondary-bg', params.secondary_bg_color || '#ffffff');
+            root.style.setProperty('--tg-text', params.text_color || '#333333');
+            root.style.setProperty('--tg-hint', params.hint_color || '#666666');
             root.style.setProperty('--tg-link', params.link_color || '#0088cc');
-
-            // Кнопка
             root.style.setProperty('--tg-button', params.button_color || '#0088cc');
-            root.style.setProperty('--tg-button-text', params.button_text_color || 'white');
+            root.style.setProperty('--tg-button-text', params.button_text_color || '#ffffff');
 
-            // Тень (адаптация для темной темы)
+            // Обновляем нативную кнопку MainButton напрямую через HEX-коды
+            // значения из params, а не через var(--...)
+            if (tg.MainButton) {
+                tg.MainButton.setParams({
+                    color: params.button_color || '#0088cc',
+                    text_color: params.button_text_color || '#ffffff'
+                });
+            }
+
+            // Адаптация специфичных стилей (тени, ошибки) под цветовую схему
             if (tg.colorScheme === 'dark') {
-                root.style.setProperty('--tg-shadow', '0 2px 8px rgba(255,255,255,0.1)');
-                // Адаптация ошибок (чтобы они оставались заметными)
+                root.style.setProperty('--tg-shadow', '0 4px 12px rgba(0,0,0,0.4)');
                 root.style.setProperty('--tg-error-bg', '#3d1f1f');
                 root.style.setProperty('--tg-error-border', '#cc4444');
+                root.style.setProperty('--tg-error-text', '#ff9999');
+            } else {
+                // сбрасываем значения, если пользователь переключился обратно на светлую тему
+                root.style.setProperty('--tg-shadow', '0 2px 8px rgba(0,0,0,0.1)');
+                root.style.setProperty('--tg-error-bg', '#ffe6e6');
+                root.style.setProperty('--tg-error-border', '#ff9999');
+                root.style.setProperty('--tg-error-text', '#d32f2f');
             }
         }
     }
@@ -1165,14 +1179,14 @@
 
             // Настраиваем Главную кнопку Telegram
             if (tg.MainButton) {
-                // Привязываем основное действие к Главной кнопке
                 tg.MainButton.onClick(startChunkedUpload);
-                // Устанавливаем базовые параметры
+
+                // реальные значения из themeParams вместо CSS переменных
                 tg.MainButton.setParams({
-                    text_color: 'var(--tg-button-text)',
-                    color: 'var(--tg-button)'
+                    color: tg.themeParams.button_color || '#0088cc',
+                    text_color: tg.themeParams.button_text_color || '#ffffff'
                 });
-                // Сначала скрываем, пока нет файлов
+
                 tg.MainButton.hide();
             }
         }
